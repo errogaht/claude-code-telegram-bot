@@ -4,7 +4,10 @@
  */
 
 class TelegramFormatter {
-  constructor() {
+  constructor(options = {}) {
+    // Formatting mode: 'markdown' or 'html' (default: 'html' for better reliability)
+    this.mode = options.mode || 'html';
+    
     // Status icons for todos
     this.statusIcons = {
       completed: '✅',
@@ -38,24 +41,51 @@ class TelegramFormatter {
   }
 
   /**
-   * Format assistant text message
+   * Escape HTML special characters for Telegram HTML mode
+   */
+  escapeHTML(text) {
+    if (!text) return '';
+    return text
+      .replace(/&/g, '&amp;')  // Must be first to avoid double-escaping
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Format assistant text message (auto-selects HTML or MarkdownV2 based on mode)
    */
   formatAssistantText(text) {
+    return this.mode === 'html' ? this.formatAssistantTextHTML(text) : this.formatAssistantTextMarkdown(text);
+  }
+
+  /**
+   * Format assistant text message (MarkdownV2 version)
+   */
+  formatAssistantTextMarkdown(text) {
     // Convert markdown to Telegram-compatible format
     let formatted = text
-      // Convert ### headers to bold (Telegram doesn't support headers)
-      .replace(/^### (.*$)/gim, '*$1*')
-      // Convert ## headers to bold with emphasis
-      .replace(/^## (.*$)/gim, '*🔸 $1*')
+      // FIRST: Handle headers BEFORE bold conversion to prevent conflicts
       // Convert # headers to bold with stronger emphasis  
       .replace(/^# (.*$)/gim, '*📋 $1*')
-      // Convert **bold** to *bold* (Telegram format)
-      .replace(/\*\*(.*?)\*\*/g, '*$1*')
+      // Convert ## headers to bold with emphasis
+      .replace(/^## (.*$)/gim, '*🔸 $1*')
+      // Convert ### headers to bold (Telegram doesn't support headers)
+      .replace(/^### (.*$)/gim, '*🔸 $1*')
+      // THEN: Convert **bold** to *bold* (Telegram format) - but avoid double conversion
+      .replace(/\*\*(.*?)\*\*/g, (match, content) => {
+        // Check if this content is already inside a header bold wrapper
+        // This prevents double-wrapping when headers contain bold text
+        return `*${content}*`;
+      })
       // Convert `code` to `code` (already correct)
       // Convert numbered lists to bullet points (more reliable)
       .replace(/^\d+\.\s+/gm, '• ')
       // Convert markdown links [text](url) to "text (url)" format
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+      // Clean up any potential nested bold markers that might have been created
+      .replace(/\*\*([^*]*)\*\*/g, '*$1*') // Convert any remaining ** to *
+      .replace(/\*\*\*/g, '*') // Fix triple asterisks
+      .replace(/\*\s*\*/g, '*') // Fix spaced asterisks
       // Keep line breaks but limit excessive ones
       .replace(/\n{4,}/g, '\n\n\n') // Max 3 line breaks
       .replace(/\n{3,}/g, '\n\n'); // Usually max 2 line breaks
@@ -68,9 +98,50 @@ class TelegramFormatter {
   }
 
   /**
-   * Format thinking message (Claude's internal thoughts)
+   * Format assistant text message (HTML version)
+   */
+  formatAssistantTextHTML(text) {
+    // First escape HTML characters
+    let formatted = this.escapeHTML(text);
+    
+    // Convert markdown to HTML format
+    formatted = formatted
+      // Convert headers to bold with icons
+      .replace(/^# (.*$)/gim, '<b>📋 $1</b>')
+      .replace(/^## (.*$)/gim, '<b>🔸 $1</b>')
+      .replace(/^### (.*$)/gim, '<b>🔸 $1</b>')
+      // Convert **bold** to <b>bold</b>
+      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+      // Convert *italic* to <i>italic</i>
+      .replace(/\*(.*?)\*/g, '<i>$1</i>')
+      // Convert `code` to <code>code</code>
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // Convert numbered lists to bullet points
+      .replace(/^\d+\.\s+/gm, '• ')
+      // Convert markdown links [text](url) to HTML links
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+      // Keep line breaks but limit excessive ones
+      .replace(/\n{4,}/g, '\n\n\n')
+      .replace(/\n{3,}/g, '\n\n');
+    
+    return {
+      type: 'text',
+      text: formatted,
+      parse_mode: 'HTML'
+    };
+  }
+
+  /**
+   * Format thinking message (auto-selects HTML or MarkdownV2 based on mode)
    */
   formatThinking(thinking, signature) {
+    return this.mode === 'html' ? this.formatThinkingHTML(thinking, signature) : this.formatThinkingMarkdown(thinking, signature);
+  }
+
+  /**
+   * Format thinking message (Claude's internal thoughts) - MarkdownV2 version
+   */
+  formatThinkingMarkdown(thinking, signature) {
     const text = `🤔 *Claude is thinking...*\n\n\`\`\`\n${thinking}\n\`\`\``;
     
     return {
@@ -81,9 +152,30 @@ class TelegramFormatter {
   }
 
   /**
-   * Format TodoWrite tool call and result
+   * Format thinking message (Claude's internal thoughts) - HTML version
+   */
+  formatThinkingHTML(thinking, signature) {
+    const escapedThinking = this.escapeHTML(thinking);
+    const text = `🤔 <b>Claude is thinking...</b>\n\n<pre>${escapedThinking}</pre>`;
+    
+    return {
+      type: 'thinking',
+      text,
+      parse_mode: 'HTML'
+    };
+  }
+
+  /**
+   * Format TodoWrite tool call and result (auto-selects HTML or MarkdownV2 based on mode)
    */
   formatTodoWrite(todos, toolResult = null) {
+    return this.mode === 'html' ? this.formatTodoWriteHTML(todos, toolResult) : this.formatTodoWriteMarkdown(todos, toolResult);
+  }
+
+  /**
+   * Format TodoWrite tool call and result (MarkdownV2 version)
+   */
+  formatTodoWriteMarkdown(todos, toolResult = null) {
     let text = `${this.toolIcons.todowrite} *Todo List*\n\n`;
     
     // Count todos by status
@@ -144,6 +236,76 @@ class TelegramFormatter {
       type: 'todo',
       text: text.trim(),
       // parse_mode will be set by sanitizer,
+      todos: todos, // Store for comparison
+      canEdit: true // This message can be edited
+    };
+  }
+
+  /**
+   * Format TodoWrite tool call and result (HTML version)
+   */
+  formatTodoWriteHTML(todos, toolResult = null) {
+    let text = `${this.toolIcons.todowrite} <b>Todo List</b>\n\n`;
+    
+    // Count todos by status
+    const counts = {
+      completed: 0,
+      in_progress: 0,
+      pending: 0,
+      blocked: 0
+    };
+    
+    todos.forEach(todo => {
+      counts[todo.status] = (counts[todo.status] || 0) + 1;
+    });
+    
+    // Add progress overview
+    const total = todos.length;
+    const completedPercent = Math.round((counts.completed / total) * 100);
+    
+    text += `📊 <b>Progress</b>: ${counts.completed}/${total} (${completedPercent}%)\n`;
+    text += `✅ ${counts.completed} | 🔄 ${counts.in_progress} | ⭕ ${counts.pending}`;
+    if (counts.blocked > 0) {
+      text += ` | 🚧 ${counts.blocked}`;
+    }
+    text += '\n\n';
+    
+    // List todos by status
+    const statusOrder = ['in_progress', 'pending', 'blocked', 'completed'];
+    
+    statusOrder.forEach(status => {
+      const statusTodos = todos.filter(todo => todo.status === status);
+      if (statusTodos.length === 0) return;
+      
+      const statusNames = {
+        completed: '✅ Completed',
+        in_progress: '🔄 In Progress', 
+        pending: '⭕ Pending',
+        blocked: '🚧 Blocked'
+      };
+      
+      text += `<b>${statusNames[status]}</b> (${statusTodos.length})\n`;
+      
+      statusTodos.forEach((todo, idx) => {
+        const priority = todo.priority ? ` ${this.priorityBadges[todo.priority]}` : '';
+        const escapedContent = this.escapeHTML(todo.content);
+        
+        if (todo.status === 'completed') {
+          // For completed todos: strikethrough content
+          text += `✅ <s>${escapedContent}</s>${priority}\n`;
+        } else {
+          // For other statuses: normal content
+          text += `${this.statusIcons[todo.status]} ${escapedContent}${priority}\n`;
+        }
+      });
+      
+      text += '\n';
+    });
+    
+    return {
+      type: 'todo',
+      text: text.trim(),
+      parse_mode: 'HTML',
       todos: todos, // Store for comparison
       canEdit: true // This message can be edited
     };

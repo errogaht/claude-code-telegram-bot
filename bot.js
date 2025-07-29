@@ -13,6 +13,76 @@ const os = require('os');
 const axios = require('axios');
 const FormData = require('form-data');
 
+/**
+ * Simple Typing Indicator for Telegram Bot
+ * Shows typing action during Claude processing
+ */
+class ActivityIndicator {
+  constructor(bot) {
+    this.bot = bot;
+    this.activeIndicators = new Map();
+  }
+
+  async start(chatId) {
+    try {
+      // Start typing indicator immediately
+      await this.bot.sendChatAction(chatId, 'typing');
+      
+      // Continue typing indicator every 4 seconds to stay within 5s limit
+      const typingInterval = setInterval(async () => {
+        try {
+          await this.bot.sendChatAction(chatId, 'typing');
+        } catch (error) {
+          console.error(`[ActivityIndicator] Typing error for chat ${chatId}:`, error.message);
+        }
+      }, 4000);
+
+      // Store for cleanup
+      this.activeIndicators.set(chatId, {
+        typingInterval,
+        startTime: Date.now()
+      });
+
+      console.log(`[ActivityIndicator] Started typing for chat ${chatId}`);
+    } catch (error) {
+      console.error(`[ActivityIndicator] Failed to start typing for chat ${chatId}:`, error.message);
+    }
+  }
+
+  async stop(chatId) {
+    const indicator = this.activeIndicators.get(chatId);
+    if (!indicator) {
+      return; // Already stopped or never started
+    }
+
+    // Clear typing interval
+    clearInterval(indicator.typingInterval);
+
+    // Calculate processing time
+    const processingTime = Date.now() - indicator.startTime;
+    console.log(`[ActivityIndicator] Stopped typing for chat ${chatId}, duration: ${processingTime}ms`);
+
+    this.activeIndicators.delete(chatId);
+  }
+
+  // Emergency cleanup - stops all indicators
+  cleanup() {
+    console.log(`[ActivityIndicator] Emergency cleanup - stopping ${this.activeIndicators.size} typing indicators`);
+    for (const [chatId, indicator] of this.activeIndicators) {
+      clearInterval(indicator.typingInterval);
+    }
+    this.activeIndicators.clear();
+  }
+
+  // Get stats for debugging
+  getStats() {
+    return {
+      activeIndicators: this.activeIndicators.size,
+      indicators: Array.from(this.activeIndicators.keys())
+    };
+  }
+}
+
 class StreamTelegramBot {
   constructor(token, options = {}) {
     this.bot = new TelegramBot(token, { polling: true });
@@ -42,6 +112,9 @@ class StreamTelegramBot {
     this.pendingVoiceCommands = new Map(); // messageId -> { transcribedText, userId, chatId }
     this.projectCache = new Map(); // shortId -> fullPath
     this.projectCacheCounter = 0;
+    
+    // Activity indicator for showing processing status
+    this.activityIndicator = new ActivityIndicator(this.bot);
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -94,6 +167,9 @@ class StreamTelegramBot {
     this.restoreLastSessionOnStartup();
     
     console.log('🤖 Stream Telegram Bot started');
+    
+    // Setup process cleanup for activity indicators
+    this.setupProcessCleanup();
   }
 
   /**
@@ -250,7 +326,7 @@ class StreamTelegramBot {
         `• /opus - Claude 4 Opus (maximum performance)\n` +
         `• /model - show model selection\n\n` +
         `*Git Commands:*\n` +
-        `• /diff - view git diff with mobile-friendly pagination\n\n` +
+        `• /diff - view git status and diff (includes untracked files) with mobile-friendly pagination\n\n` +
         `*Thinking Mode Commands:*\n` +
         `• /think - select thinking mode (Auto, Think, Think Hard, Think Harder, Ultrathink)\n\n` +
         `Just send me a message to start!`;
@@ -292,6 +368,8 @@ class StreamTelegramBot {
           const userId = this.getUserIdFromChat(chatId);
           // Update access time when resuming session
           this.storeSessionId(userId, sessionId);
+          // Save to config for persistence
+          await this.saveCurrentSessionToConfig(userId, sessionId);
           await this.handleSessionResume(sessionId, chatId, messageId, query.from.id);
         } else if (data.startsWith('model:')) {
           await this.handleModelCallback(data, chatId, messageId, query.from.id);
@@ -299,6 +377,13 @@ class StreamTelegramBot {
           await this.handleThinkingModeCallback(data, chatId, messageId, query.from.id);
         } else if (data.startsWith('diff:')) {
           await this.handleDiffCallback(data, chatId, messageId, query.from.id);
+        } else if (data.startsWith('session_page:')) {
+          const page = parseInt(data.replace('session_page:', ''));
+          await this.handleSessionPageCallback(page, chatId, messageId, query.from.id);
+        } else if (data === 'page_info') {
+          // Just answer the callback - page info button is non-interactive
+          await this.bot.answerCallbackQuery(query.id, { text: 'Page indicator' });
+          return;
         }
         
         await this.bot.answerCallbackQuery(query.id);
@@ -409,11 +494,8 @@ class StreamTelegramBot {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
-    // Send processing message
-    const processingMsg = await this.bot.sendMessage(chatId, 
-      '🎤 *Processing voice message...*\n\n⏳ Transcribing audio with Nexara...', 
-      { parse_mode: 'Markdown' }
-    );
+    // Start typing indicator for voice processing
+    await this.activityIndicator.start(chatId);
     
     try {
       // Get voice file from Telegram
@@ -423,50 +505,44 @@ class StreamTelegramBot {
       // Transcribe with Nexara
       const transcribedText = await this.transcribeWithNexara(audioBuffer);
       
-      // Store pending command
-      this.pendingVoiceCommands.set(processingMsg.message_id, {
-        transcribedText,
-        userId,
-        chatId
-      });
+      // Stop typing indicator
+      await this.activityIndicator.stop(chatId);
       
-      // Show confirmation message with buttons
+      // Send confirmation message with buttons
       const keyboard = {
         inline_keyboard: [
           [
-            { text: '✅ Execute', callback_data: `voice_confirm:${processingMsg.message_id}` },
-            { text: '❌ Cancel', callback_data: `voice_cancel:${processingMsg.message_id}` }
+            { text: '✅ Execute', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
+            { text: '❌ Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
           ],
           [
-            { text: '✏️ Edit', callback_data: `voice_edit:${processingMsg.message_id}` }
+            { text: '✏️ Edit', callback_data: `voice_edit:${chatId}_${Date.now()}` }
           ]
         ]
       };
       
-      await this.bot.editMessageText(
+      const confirmMsg = await this.bot.sendMessage(chatId,
         `🎤 *Voice Message Transcribed*\n\n` +
         `📝 **Text:** "${transcribedText}"\n\n` +
         `❓ Execute this command?`,
         {
-          chat_id: chatId,
-          message_id: processingMsg.message_id,
           parse_mode: 'Markdown',
           reply_markup: keyboard
         }
       );
       
+      // Store pending command with new message ID
+      this.pendingVoiceCommands.set(confirmMsg.message_id, {
+        transcribedText,
+        userId,
+        chatId
+      });
+      
     } catch (error) {
       console.error('[Voice] Transcription error:', error);
-      await this.bot.editMessageText(
-        `❌ *Voice transcription failed*\n\n` +
-        `Error: ${error.message}\n\n` +
-        `💡 Please try again or send a text message`,
-        {
-          chat_id: chatId,
-          message_id: processingMsg.message_id,
-          parse_mode: 'Markdown'
-        }
-      );
+      
+      // Stop typing indicator on error
+      await this.activityIndicator.stop(chatId);
     }
   }
 
@@ -513,9 +589,12 @@ class StreamTelegramBot {
     processor.on('session-init', async (data) => {
       console.log(`[User ${userId}] Session initialized: ${data.sessionId}`);
       
-      // Store session ID for user
+      // Store session ID for user in memory
       this.storeSessionId(userId, data.sessionId);
       session.sessionId = data.sessionId;
+      
+      // IMPORTANT: Save session to config file immediately for persistence across bot restarts
+      await this.saveCurrentSessionToConfig(userId, data.sessionId);
       
       const formatted = this.formatter.formatSessionInit(data);
       await this.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
@@ -524,6 +603,9 @@ class StreamTelegramBot {
     // Assistant text responses
     processor.on('assistant-text', async (data) => {
       console.log(`[User ${userId}] Assistant text: ${data.text.substring(0, 100)}...`);
+      
+      // Typing indicator continues automatically
+      
       const formatted = this.formatter.formatAssistantText(data.text);
       await this.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
     });
@@ -590,6 +672,10 @@ class StreamTelegramBot {
     // Execution completion
     processor.on('complete', async (data) => {
       console.log(`[User ${userId}] Execution complete: ${data.success}`);
+      
+      // Stop typing indicator when Claude finishes
+      await this.activityIndicator.stop(chatId);
+      
       const formatted = this.formatter.formatExecutionResult(data, session.sessionId);
       await this.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
     });
@@ -597,6 +683,10 @@ class StreamTelegramBot {
     // Errors
     processor.on('error', async (error) => {
       console.error(`[User ${userId}] Claude error:`, error);
+      
+      // Stop typing indicator on error
+      await this.activityIndicator.stop(chatId);
+      
       await this.sendError(chatId, error);
     });
   }
@@ -686,26 +776,40 @@ class StreamTelegramBot {
   async showSessionStatus(chatId) {
     const userId = this.getUserIdFromChat(chatId);
     const session = this.userSessions.get(userId);
+    const storedSessionId = this.getStoredSessionId(userId);
+    const sessionHistory = this.getSessionHistory(userId);
 
-    if (!session) {
+    // Check if we have any session info (active or stored)
+    if (!session && !storedSessionId) {
       await this.bot.sendMessage(chatId, '📋 *No active session*\n\nSend a message to start!', 
         { parse_mode: 'Markdown' });
       return;
     }
 
-    const isActive = session.processor.isActive();
-    const sessionId = session.sessionId || session.processor.getCurrentSessionId();
-    const storedSessionId = this.getStoredSessionId(userId);
-    const messageCount = session.messageCount;
-    const uptime = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
-    const sessionHistory = this.getSessionHistory(userId);
-
     let text = `📊 *Session Status*\n\n`;
-    text += `🆔 *Current:* \`${sessionId ? sessionId.slice(-8) : 'Not started'}\`\n`;
-    text += `📋 *Stored:* \`${storedSessionId ? storedSessionId.slice(-8) : 'None'}\`\n`;
-    text += `📊 *Status:* ${isActive ? '🔄 Processing' : '💤 Idle'}\n`;
-    text += `💬 *Messages:* ${messageCount}\n`;
-    text += `⏱ *Uptime:* ${uptime}s\n`;
+
+    if (session) {
+      // Active session exists
+      const isActive = session.processor.isActive();
+      const sessionId = session.sessionId || session.processor.getCurrentSessionId();
+      const messageCount = session.messageCount;
+      const uptime = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
+
+      text += `🆔 *Current:* \`${sessionId ? sessionId.slice(-8) : 'Not started'}\`\n`;
+      text += `📋 *Stored:* \`${storedSessionId ? storedSessionId.slice(-8) : 'None'}\`\n`;
+      text += `📊 *Status:* ${isActive ? '🔄 Processing' : '💤 Idle'}\n`;
+      text += `💬 *Messages:* ${messageCount}\n`;
+      text += `⏱ *Uptime:* ${uptime}s\n`;
+    } else if (storedSessionId) {
+      // Only stored session exists (bot was restarted)
+      text += `🆔 *Current:* 💤 *Not active*\n`;
+      text += `📋 *Stored:* \`${storedSessionId.slice(-8)}\` *(can resume)*\n`;
+      text += `📊 *Status:* ⏸️ *Paused (bot restarted)*\n`;
+      text += `💬 *Messages:* -\n`;
+      text += `⏱ *Uptime:* -\n`;
+      text += `\n💡 *Send a message to resume this session*\n`;
+    }
+
     text += `📁 *Directory:* ${path.basename(this.options.workingDirectory)}\n`;
     text += `📚 *History:* ${sessionHistory.length} sessions\n`;
     text += `🤖 *Model:* ${this.options.model}`;
@@ -803,18 +907,23 @@ class StreamTelegramBot {
    * - Reads session files from ~/.claude/projects/<project-dir>/
    * - Supports both 'summary' type and 'user' type sessions
    * - Handles string and array message content
-   * - Shows last 6 sessions sorted by modification time
-   * - Includes quick resume buttons for top 3 sessions
+   * - Shows 5 sessions per page with pagination navigation
+   * - Includes quick resume buttons for all displayed sessions
    * - Displays human-readable time stamps
    * - Shows current project directory
    */
-  async showSessionHistory(chatId) {
+  async showSessionHistory(chatId, page = 0) {
     const userId = this.getUserIdFromChat(chatId);
     const currentSessionId = this.getStoredSessionId(userId);
     const currentDirectory = this.getCurrentDirectory(userId);
     
     try {
       const sessions = await this.readClaudeCodeSessions(currentDirectory, userId);
+      const pageSize = 5;
+      const totalPages = Math.ceil(sessions.length / pageSize);
+      const startIndex = page * pageSize;
+      const endIndex = startIndex + pageSize;
+      const displayedSessions = sessions.slice(startIndex, endIndex);
       
       let text = '📚 *Session History*\n\n';
       
@@ -832,9 +941,14 @@ class StreamTelegramBot {
         
         await this.safeSendMessage(chatId, text, { parse_mode: 'Markdown' });
       } else {
-        text += `*Recent sessions* (last ${Math.min(sessions.length, 6)}):\n\n`;
+        // Show pagination info
+        if (totalPages > 1) {
+          text += `*Page ${page + 1} of ${totalPages}* (${sessions.length} total sessions)\n\n`;
+        } else {
+          text += `*${sessions.length} session${sessions.length === 1 ? '' : 's'} found*\n\n`;
+        }
         
-        sessions.slice(0, 6).forEach((session, index) => {
+        displayedSessions.forEach((session, index) => {
           const shortId = session.sessionId.slice(-8);
           const timeAgo = this.getTimeAgo(session.timestamp);
           let preview = session.preview;
@@ -844,29 +958,51 @@ class StreamTelegramBot {
             preview = preview.substring(0, 80) + '...';
           }
           
-          text += `${index + 1}. \`${shortId}\` • ${timeAgo}\n`;
+          text += `${startIndex + index + 1}. \`${shortId}\` • ${timeAgo}\n`;
           text += `   💬 _${preview}_\n\n`;
         });
         
-        if (sessions.length > 6) {
-          text += `... and ${sessions.length - 6} more sessions\n\n`;
-        }
-        
         text += '💡 Tap a session number to resume it';
         
-        // Create inline keyboard with all 6 sessions using numbers (3 buttons per row)
-        const displayedSessions = sessions.slice(0, 6);
+        // Create inline keyboard
         const keyboard = {
           inline_keyboard: []
         };
         
-        // Create rows of 3 buttons each
-        for (let i = 0; i < displayedSessions.length; i += 3) {
-          const row = displayedSessions.slice(i, i + 3).map((session, index) => ({
-            text: `${i + index + 1}`,
-            callback_data: `resume_session:${session.sessionId}`
-          }));
-          keyboard.inline_keyboard.push(row);
+        // Session resume buttons (single row of up to 5 numbers)
+        const resumeRow = displayedSessions.map((session, index) => ({
+          text: `${startIndex + index + 1}`,
+          callback_data: `resume_session:${session.sessionId}`
+        }));
+        keyboard.inline_keyboard.push(resumeRow);
+        
+        // Pagination buttons (if more than one page)
+        if (totalPages > 1) {
+          const paginationRow = [];
+          
+          // Previous button
+          if (page > 0) {
+            paginationRow.push({
+              text: '◀️ Previous',
+              callback_data: `session_page:${page - 1}`
+            });
+          }
+          
+          // Page indicator
+          paginationRow.push({
+            text: `${page + 1}/${totalPages}`,
+            callback_data: 'page_info'
+          });
+          
+          // Next button
+          if (page < totalPages - 1) {
+            paginationRow.push({
+              text: 'Next ▶️',
+              callback_data: `session_page:${page + 1}`
+            });
+          }
+          
+          keyboard.inline_keyboard.push(paginationRow);
         }
         
         await this.bot.sendMessage(chatId, text, { 
@@ -1357,27 +1493,73 @@ class StreamTelegramBot {
     const cwd = this.options.workingDirectory;
 
     try {
-      // Get basic status
+      // Get basic status (includes untracked files)
       const statusResult = await execAsync('git status --porcelain', { cwd });
       const modifiedFiles = statusResult.stdout.trim().split('\n').filter(line => line.trim());
       
-      // Get diff stats
-      const statsResult = await execAsync('git diff --stat --color=never', { cwd });
+      // Get diff stats (includes both staged and unstaged changes)
+      const statsResult = await execAsync('git diff HEAD --stat --color=never', { cwd });
       const diffStats = statsResult.stdout.trim();
       
-      // Get file details
-      const nameStatusResult = await execAsync('git diff --name-status', { cwd });
-      const nameStatus = nameStatusResult.stdout.trim().split('\n').filter(line => line.trim());
+      // Get file details (includes both staged and unstaged changes)
+      const nameStatusResult = await execAsync('git diff HEAD --name-status', { cwd });
+      const gitDiffNameStatus = nameStatusResult.stdout.trim().split('\n').filter(line => line.trim());
       
-      // Get numeric stats
-      const numStatsResult = await execAsync('git diff --numstat', { cwd });
+      // Get numeric stats (includes both staged and unstaged changes)
+      const numStatsResult = await execAsync('git diff HEAD --numstat', { cwd });
       const numStats = numStatsResult.stdout.trim().split('\n').filter(line => line.trim());
+
+      // Parse git status --porcelain to get ALL files including untracked
+      const allFiles = [];
+      const allNumStats = [];
+      
+      modifiedFiles.forEach(line => {
+        const status = line.substring(0, 2);
+        const filename = line.substring(3);
+        
+        if (status.includes('??')) {
+          // Untracked file - get line count
+          allFiles.push(`??	${filename}`);
+          // For untracked files, count lines and show as all added
+          try {
+            const fs = require('fs');
+            const filePath = path.join(cwd, filename);
+            const content = fs.readFileSync(filePath, 'utf8');
+            const lineCount = content.split('\n').length;
+            allNumStats.push(`${lineCount}	0	${filename}`);
+          } catch (error) {
+            allNumStats.push(`0	0	${filename}`);
+          }
+        } else if (status.includes('A')) {
+          // Added file (staged)
+          allFiles.push(`A	${filename}`);
+        } else if (status.includes('M')) {
+          // Modified file - use 'M' regardless of position
+          allFiles.push(`M	${filename}`);
+        } else if (status.includes('D')) {
+          // Deleted file
+          allFiles.push(`D	${filename}`);
+        } else if (status.includes('R')) {
+          // Renamed file
+          allFiles.push(`R	${filename}`);
+        } else {
+          // Other status, use first non-space character
+          const statusChar = status.trim() || status.charAt(0);
+          allFiles.push(`${statusChar}	${filename}`);
+        }
+      });
+
+      // Use combined file list (git diff + untracked files) as nameStatus
+      const nameStatus = allFiles.length > 0 ? allFiles : gitDiffNameStatus;
+      
+      // Combine numStats from git diff with untracked file stats
+      const combinedNumStats = [...numStats, ...allNumStats];
 
       return {
         modifiedFiles,
         diffStats,
         nameStatus,
-        numStats,
+        numStats: combinedNumStats,
         hasChanges: modifiedFiles.length > 0 || diffStats.length > 0
       };
       
@@ -1430,7 +1612,7 @@ class StreamTelegramBot {
       text += '*📝 Changed files:*\n';
       gitStatus.nameStatus.slice(0, 5).forEach((line, index) => {
         const [status, filename] = line.split('\t');
-        const icon = status === 'M' ? '📝' : status === 'A' ? '➕' : status === 'D' ? '➖' : '🔄';
+        const icon = status.includes('M') ? '📝' : status.includes('A') ? '➕' : status.includes('D') ? '➖' : status === '??' ? '🆕' : '🔄';
         const shortName = path.basename(filename);
         text += `${icon} \`${shortName}\`\n`;
       });
@@ -1539,6 +1721,60 @@ class StreamTelegramBot {
   }
 
   /**
+   * Format untracked file content with pagination support
+   */
+  async formatUntrackedFileContent(filename, cwd, page = 0) {
+    const fs = require('fs');
+    const filePath = path.join(cwd, filename);
+    
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const lines = content.split('\n');
+      const shortName = path.basename(filename);
+      
+      // Pagination settings
+      const linesPerPage = 40;
+      const totalPages = Math.ceil(lines.length / linesPerPage);
+      const startLine = page * linesPerPage;
+      const endLine = Math.min(startLine + linesPerPage, lines.length);
+      const displayLines = lines.slice(startLine, endLine);
+      
+      let formattedDiff = `🆕 <b>${this.escapeHtml(shortName)}</b> (new file)\n`;
+      
+      // Add pagination info if multiple pages
+      if (totalPages > 1) {
+        formattedDiff += `📄 <i>Page ${page + 1} of ${totalPages} (lines ${startLine + 1}-${endLine} of ${lines.length})</i>\n`;
+      } else {
+        formattedDiff += `📄 <i>${lines.length} lines</i>\n`;
+      }
+      
+      formattedDiff += '\n<pre><code>';
+      
+      displayLines.forEach((line, index) => {
+        const lineNumber = startLine + index + 1;
+        formattedDiff += `${lineNumber}: ${this.escapeHtml(line)}\n`;
+      });
+      
+      formattedDiff += '</code></pre>';
+      
+      return {
+        content: formattedDiff,
+        totalPages,
+        currentPage: page,
+        totalLines: lines.length
+      };
+      
+    } catch (readError) {
+      return {
+        content: `❌ <b>Cannot read file: ${this.escapeHtml(path.basename(filename))}</b>\n\nError: ${readError.message}`,
+        totalPages: 1,
+        currentPage: 0,
+        totalLines: 0
+      };
+    }
+  }
+
+  /**
    * Show detailed diff for a specific file
    */
   async showDiffFile(chatId, gitStatus, fileIndex = 0, contextLines = 3, wordDiff = false) {
@@ -1554,18 +1790,35 @@ class StreamTelegramBot {
     const cwd = this.options.workingDirectory;
 
     try {
-      // Get file diff
-      let diffCommand = `git diff --color=never --unified=${contextLines}`;
-      if (wordDiff) {
-        diffCommand += ' --word-diff=porcelain';
+      let formattedDiff;
+      
+      if (status === '??') {
+        // For untracked files, show the file content with pagination
+        const untrackedResult = await this.formatUntrackedFileContent(filename, cwd, 0);
+        formattedDiff = untrackedResult.content;
+        
+        // Store pagination info for later use
+        this.untrackedFilePagination = {
+          fileIndex,
+          filename,
+          totalPages: untrackedResult.totalPages,
+          currentPage: untrackedResult.currentPage,
+          totalLines: untrackedResult.totalLines
+        };
+      } else {
+        // For tracked files, use git diff
+        let diffCommand = `git diff HEAD --color=never --unified=${contextLines}`;
+        if (wordDiff) {
+          diffCommand += ' --word-diff=porcelain';
+        }
+        diffCommand += ` -- "${filename}"`;
+
+        const diffResult = await execAsync(diffCommand, { cwd });
+        const diffOutput = diffResult.stdout;
+
+        // Parse and format diff
+        formattedDiff = this.formatDiffForTelegram(diffOutput, filename, contextLines);
       }
-      diffCommand += ` -- "${filename}"`;
-
-      const diffResult = await execAsync(diffCommand, { cwd });
-      const diffOutput = diffResult.stdout;
-
-      // Parse and format diff
-      const formattedDiff = this.formatDiffForTelegram(diffOutput, filename, contextLines);
       
       // Split into chunks if too long (Telegram limit ~4096 chars)
       const chunks = this.splitIntoChunks(formattedDiff, 3800);
@@ -1649,6 +1902,17 @@ class StreamTelegramBot {
    */
   escapeMarkdown(text) {
     return text.replace(/([_*\[\]()~`>#+=|{}.!-])/g, '\\$1');
+  }
+
+  /**
+   * Escape HTML special characters for safe display
+   */
+  escapeHtml(text) {
+    return text.replace(/&/g, '&amp;')
+               .replace(/</g, '&lt;')
+               .replace(/>/g, '&gt;')
+               .replace(/"/g, '&quot;')
+               .replace(/'/g, '&#39;');
   }
 
   /**
@@ -1853,6 +2117,10 @@ class StreamTelegramBot {
         };
         
         console.error('🚨 Telegram Parse Error:', errorInfo);
+        console.error('🔍 FULL MESSAGE CONTENT FOR DEBUGGING:');
+        console.error('═'.repeat(80));
+        console.error(text);
+        console.error('═'.repeat(80));
         
         // Send clean error message without problematic formatting
         await this.bot.sendMessage(chatId, 
@@ -2007,6 +2275,35 @@ class StreamTelegramBot {
       }
     }
 
+    // Page navigation for untracked files
+    if (status === '??' && this.untrackedFilePagination && this.untrackedFilePagination.totalPages > 1) {
+      const pageRow = [];
+      const currentPage = this.untrackedFilePagination.currentPage;
+      const totalPages = this.untrackedFilePagination.totalPages;
+      
+      if (currentPage > 0) {
+        pageRow.push({ 
+          text: '⬅️ Prev Page', 
+          callback_data: `diff:untracked_page:${fileIndex}:${currentPage - 1}:${contextLines}:${wordDiff}` 
+        });
+      }
+      
+      // Page indicator
+      pageRow.push({ 
+        text: `📄 ${currentPage + 1}/${totalPages}`, 
+        callback_data: 'page_info' 
+      });
+      
+      if (currentPage < totalPages - 1) {
+        pageRow.push({ 
+          text: 'Next Page ➡️', 
+          callback_data: `diff:untracked_page:${fileIndex}:${currentPage + 1}:${contextLines}:${wordDiff}` 
+        });
+      }
+      
+      keyboard.inline_keyboard.push(pageRow);
+    }
+
     // File navigation
     const fileRow = [];
     if (fileIndex > 0) {
@@ -2043,13 +2340,16 @@ class StreamTelegramBot {
     ]);
 
     try {
+      // Use HTML parse mode for untracked files to prevent backtick issues
+      const parseMode = status === '??' ? 'HTML' : 'Markdown';
+      
       await this.bot.sendMessage(chatId, text, {
-        parse_mode: 'Markdown',
+        parse_mode: parseMode,
         reply_markup: keyboard
       });
     } catch (error) {
-      // If Markdown parsing fails, try without formatting
-      console.error('[Diff] Markdown parsing error:', error.message);
+      // If parsing fails, try without formatting
+      console.error(`[Diff] ${parseMode} parsing error:`, error.message);
       
       // Remove markdown formatting and try again
       const plainText = text
@@ -2107,19 +2407,71 @@ class StreamTelegramBot {
         
         // Get diff and show specific chunk
         const [status, filename] = gitStatus.nameStatus[fileIndex].split('\t');
-        const { exec } = require('child_process');
-        const { promisify } = require('util');
-        const execAsync = promisify(exec);
+        let formattedDiff;
         
-        const diffCommand = `git diff --color=never --unified=${contextLines} -- "${filename}"`;
-        const diffResult = await execAsync(diffCommand, { 
-          cwd: this.options.workingDirectory 
-        });
+        if (status === '??') {
+          // For untracked files, use pagination logic
+          const untrackedResult = await this.formatUntrackedFileContent(filename, this.options.workingDirectory, 0);
+          formattedDiff = untrackedResult.content;
+          
+          // Update pagination info for chunk navigation
+          this.untrackedFilePagination = {
+            fileIndex,
+            filename,
+            totalPages: untrackedResult.totalPages,
+            currentPage: untrackedResult.currentPage,
+            totalLines: untrackedResult.totalLines
+          };
+        } else {
+          // For tracked files, use git diff
+          const { exec } = require('child_process');
+          const { promisify } = require('util');
+          const execAsync = promisify(exec);
+          
+          const diffCommand = `git diff HEAD --color=never --unified=${contextLines} -- "${filename}"`;
+          const diffResult = await execAsync(diffCommand, { 
+            cwd: this.options.workingDirectory 
+          });
+          
+          formattedDiff = this.formatDiffForTelegram(diffResult.stdout, filename, contextLines);
+        }
         
-        const formattedDiff = this.formatDiffForTelegram(diffResult.stdout, filename, contextLines);
         const chunks = this.splitIntoChunks(formattedDiff, 3800);
         
         await this.sendDiffChunk(chatId, chunks, chunkIndex, {
+          filename,
+          fileIndex,
+          contextLines,
+          wordDiff,
+          status,
+          totalFiles: gitStatus.nameStatus.length
+        });
+        
+      } else if (action === 'untracked_page') {
+        const fileIndex = parseInt(parts[2]) || 0;
+        const page = parseInt(parts[3]) || 0;
+        const contextLines = parseInt(parts[4]) || 3;
+        const wordDiff = parts[5] === 'true';
+        
+        await this.bot.deleteMessage(chatId, messageId);
+        const gitStatus = await this.getGitStatus();
+        
+        // Get the filename and show the specific page
+        const [status, filename] = gitStatus.nameStatus[fileIndex].split('\t');
+        const untrackedResult = await this.formatUntrackedFileContent(filename, this.options.workingDirectory, page);
+        
+        // Update pagination info
+        this.untrackedFilePagination = {
+          fileIndex,
+          filename,
+          totalPages: untrackedResult.totalPages,
+          currentPage: untrackedResult.currentPage,
+          totalLines: untrackedResult.totalLines
+        };
+        
+        const chunks = this.splitIntoChunks(untrackedResult.content, 3800);
+        
+        await this.sendDiffChunk(chatId, chunks, 0, {
           filename,
           fileIndex,
           contextLines,
@@ -2471,6 +2823,8 @@ class StreamTelegramBot {
 
       // Store this session as current for the user
       this.storeSessionId(userId, sessionId);
+      // Save to config for persistence
+      await this.saveCurrentSessionToConfig(userId, sessionId);
       
       console.log(`[User ${userId}] Quick resumed session: ${sessionId}`);
       
@@ -2479,6 +2833,126 @@ class StreamTelegramBot {
       await this.bot.sendMessage(chatId, 
         `❌ Failed to resume session \`${sessionId.slice(-8)}\``,
         { parse_mode: 'Markdown' }
+      );
+    }
+  }
+
+  /**
+   * Handle session page navigation callbacks  
+   */
+  async handleSessionPageCallback(page, chatId, messageId, userId) {
+    try {
+      // Edit the message to show the new page
+      await this.bot.editMessageText(
+        '🔄 *Loading session page...*',
+        {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: 'Markdown'
+        }
+      );
+
+      // Get session history for the new page
+      const currentDirectory = this.getCurrentDirectory(userId);
+      const sessions = await this.readClaudeCodeSessions(currentDirectory, userId);
+      const pageSize = 5;
+      const totalPages = Math.ceil(sessions.length / pageSize);
+      const startIndex = page * pageSize;
+      const displayedSessions = sessions.slice(startIndex, startIndex + pageSize);
+
+      // Build the message text
+      let text = '📚 *Session History*\n\n';
+      
+      if (currentDirectory) {
+        text += `📁 *Project:* \`${currentDirectory.replace(process.env.HOME, '~')}\`\n\n`;
+      }
+      
+      const currentSessionId = this.getStoredSessionId(userId);
+      if (currentSessionId) {
+        text += `🔄 *Current:* \`${currentSessionId.slice(-8)}\`\n\n`;
+      }
+
+      // Show pagination info
+      if (totalPages > 1) {
+        text += `*Page ${page + 1} of ${totalPages}* (${sessions.length} total sessions)\n\n`;
+      } else {
+        text += `*${sessions.length} session${sessions.length === 1 ? '' : 's'} found*\n\n`;
+      }
+      
+      displayedSessions.forEach((session, index) => {
+        const shortId = session.sessionId.slice(-8);
+        const timeAgo = this.getTimeAgo(session.timestamp);
+        let preview = session.preview;
+        
+        // Truncate preview if too long
+        if (preview.length > 80) {
+          preview = preview.substring(0, 80) + '...';
+        }
+        
+        text += `${startIndex + index + 1}. \`${shortId}\` • ${timeAgo}\n`;
+        text += `   💬 _${preview}_\n\n`;
+      });
+      
+      text += '💡 Tap a session number to resume it';
+
+      // Create inline keyboard
+      const keyboard = {
+        inline_keyboard: []
+      };
+      
+      // Session resume buttons (single row of up to 5 numbers)
+      const resumeRow = displayedSessions.map((session, index) => ({
+        text: `${startIndex + index + 1}`,
+        callback_data: `resume_session:${session.sessionId}`
+      }));
+      keyboard.inline_keyboard.push(resumeRow);
+      
+      // Pagination buttons (if more than one page)
+      if (totalPages > 1) {
+        const paginationRow = [];
+        
+        // Previous button
+        if (page > 0) {
+          paginationRow.push({
+            text: '◀️ Previous',
+            callback_data: `session_page:${page - 1}`
+          });
+        }
+        
+        // Page indicator
+        paginationRow.push({
+          text: `${page + 1}/${totalPages}`,
+          callback_data: 'page_info'
+        });
+        
+        // Next button
+        if (page < totalPages - 1) {
+          paginationRow.push({
+            text: 'Next ▶️',
+            callback_data: `session_page:${page + 1}`
+          });
+        }
+        
+        keyboard.inline_keyboard.push(paginationRow);
+      }
+
+      // Update the message with new content
+      await this.bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+      });
+      
+    } catch (error) {
+      console.error('Session page callback error:', error);
+      await this.bot.editMessageText(
+        `❌ *Error loading page ${page + 1}*\n\nTry again or use /sessions to refresh.`,
+        {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: 'Markdown'
+        }
       );
     }
   }
@@ -2925,8 +3399,8 @@ class StreamTelegramBot {
       return;
     }
 
-    // Send "typing" indicator
-    await this.bot.sendChatAction(chatId, 'typing');
+    // Start typing indicator
+    await this.activityIndicator.start(chatId);
 
     try {
       // Check if we have a stored session ID to resume
@@ -2948,21 +3422,46 @@ class StreamTelegramBot {
       
       session.messageCount++;
       
+      // Activity indicator will be stopped when Claude completes (in 'complete' event)
+      
     } catch (error) {
       console.error(`[User ${userId}] Error starting Claude:`, error);
+      
+      // Error - stop typing indicator
+      await this.activityIndicator.stop(chatId);
+      
       await this.sendError(chatId, error);
     }
+  }
+
+  /**
+   * Setup process cleanup for activity indicators
+   */
+  setupProcessCleanup() {
+    const cleanup = () => {
+      console.log('\n📦 Bot shutting down - cleaning up activity indicators...');
+      this.activityIndicator.cleanup();
+      process.exit(0);
+    };
+
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    process.on('exit', () => {
+      this.activityIndicator.cleanup();
+    });
   }
 
   /**
    * Get bot statistics
    */
   getStats() {
+    const activityStats = this.activityIndicator.getStats();
     return {
       activeSessions: this.userSessions.size,
       activeProcessors: this.activeProcessors.size,
       totalUsers: this.sessionStorage.size,
       pendingVoiceCommands: this.pendingVoiceCommands.size,
+      activeIndicators: activityStats.activeIndicators,
       uptime: process.uptime()
     };
   }
