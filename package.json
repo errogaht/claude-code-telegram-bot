@@ -1,0 +1,41 @@
+{
+  "name": "claude-telegram-stream-bot",
+  "version": "2.0.0",
+  "description": "Claude Code Telegram Bot with Stream-JSON Architecture",
+  "main": "bot.js",
+  "scripts": {
+    "setup": "node scripts/setup-bot.js",
+    "start": "node scripts/start-bot.js bot1",
+    "bot1": "node scripts/start-bot.js bot1",
+    "bot2": "node scripts/start-bot.js bot2",
+    "bot3": "node scripts/start-bot.js bot3",
+    "dev": "nodemon scripts/start-bot.js bot1",
+    "test": "node test-stream.js",
+    "list-bots": "ls -la configs/*.json 2>/dev/null | grep -v example || echo 'No bot configurations found. Run: npm run setup'"
+  },
+  "keywords": [
+    "claude",
+    "telegram",
+    "bot",
+    "stream-json",
+    "cli",
+    "ai"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "form-data": "^4.0.4",
+    "node-telegram-bot-api": "^0.61.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/claude-telegram-stream-bot.git"
+  }
+}

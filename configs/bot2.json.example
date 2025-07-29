@@ -1,0 +1,9 @@
+{
+  "botName": "TestBot",
+  "botToken": "your_telegram_bot_token_here",
+  "adminUserId": "your_telegram_user_id_here",
+  "nexaraApiKey": "your_nexara_api_key_here",
+  "workingDirectory": "/home/user/test-projects",
+  "defaultModel": "sonnet",
+  "logLevel": "debug"
+}
