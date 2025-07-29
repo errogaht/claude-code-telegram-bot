@@ -1,0 +1,49 @@
+# Configuration and secrets
+config.json
+.env
+configs/*.json
+
+# Node modules
+node_modules/
+npm-debug.log*
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nexara cache
+nexara_cache/
+
+# Backup files
+*.backup
+*.bak
+claudia-source/
+.claude
+.hive-mind
+.obsidian
+.roo
+.swarm
+memory
+.roomodes
+claude-flow*
+.mcp.json
+
+# Suspicious/unused files (should be cleaned up)
+package-new.json
+package-stream.json
+CLAUDE.md
