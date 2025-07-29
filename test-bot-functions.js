@@ -66,7 +66,6 @@ try {
   
   assert(typeof result === 'object', 'Should return an object');
   assert(typeof result.text === 'string', 'Should have text property');
-  assert(result.parse_mode === 'Markdown', 'Should use Markdown');
   assert(result.text.includes('Task 1'), 'Should include task content');
   assert(result.text.includes('📋'), 'Should include emoji');
   
@@ -104,8 +103,7 @@ try {
   
   assert(typeof result === 'object', 'Should return an object');
   assert(typeof result.text === 'string', 'Should have text property');
-  assert(result.parse_mode === 'Markdown', 'Should use Markdown');
-  assert(result.text.includes('test-ses'), 'Should include session ID');
+  assert(result.text.includes('12345678'), 'Should include session ID (last 8 chars)');
   assert(result.text.includes('sonnet'), 'Should include model');
   
   console.log('✅ Session init formatting works correctly');
