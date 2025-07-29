@@ -47,3 +47,4 @@ claude-flow*
 package-new.json
 package-stream.json
 CLAUDE.md
+/claude-response-chunks-output.json
