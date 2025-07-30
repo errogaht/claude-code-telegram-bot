@@ -16,6 +16,13 @@ logs/
 *.temp
 .cache/
 
+# Testing
+coverage/
+.nyc_output/
+tests/fixtures/temp/
+*.lcov
+.jest/
+
 # IDE
 .vscode/
 .idea/
@@ -43,8 +50,22 @@ memory
 claude-flow*
 .mcp.json
 
+# Temporary/scratch files and directories
+tmp/
+scratch/
+var/
+temp/
+
+# Test-related temporary files
+*test*.js
+*-test.js
+test*.js
+activity-test.js
+
 # Suspicious/unused files (should be cleaned up)
 package-new.json
 package-stream.json
 CLAUDE.md
 /claude-response-chunks-output.json
+/tests/real-bot/test-config-*.json
+.claude-flow

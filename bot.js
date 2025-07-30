@@ -114,17 +114,24 @@ class StreamTelegramBot {
     // Handle text messages
     this.bot.on('message', async (msg) => {
       try {
+        const userId = msg.from.id;
+        const username = msg.from.username || 'Unknown';
+        const chatId = msg.chat.id;
+        
         // Always check admin access first (auto-assign first user if needed)
         if (!this.checkAdminAccess(msg.from.id, msg.chat.id)) {
           return; // Access denied message already sent
         }
-        
+
         if (msg.text && !msg.text.startsWith('/')) {
+          console.log(`[TEXT_MESSAGE] User ${userId} (@${username}) sent text: "${msg.text.substring(0, 100)}${msg.text.length > 100 ? '...' : ''}" in chat ${chatId}`);
+          
           // Check if it's a keyboard button press
           if (await this.keyboardHandlers.handleKeyboardButton(msg)) {
             return; // Button handled, don't process as regular message
           }
-          
+
+          console.log(`[COMPONENT] StreamTelegramBot.handleUserMessage - processing regular text message`);
           await this.handleUserMessage(msg);
         }
       } catch (error) {
@@ -145,6 +152,11 @@ class StreamTelegramBot {
 
     // Commands
     this.bot.onText(/\/start/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      const chatId = msg.chat.id;
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /start in chat ${chatId}`);
+      
       // Check admin access (auto-assign first user if needed)
       if (!this.checkAdminAccess(msg.from.id, msg.chat.id)) {
         return; // Access denied message already sent
@@ -185,6 +197,11 @@ class StreamTelegramBot {
     });
 
     this.bot.onText(/\/cancel/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /cancel in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${msg.chat.id}`);
+      
       await this.sessionManager.cancelUserSession(msg.chat.id);
       await this.safeSendMessage(msg.chat.id, '🛑 *Session Cancelled*\n\nAll processes stopped.', {
         forceNotification: true,  // Critical user action
@@ -197,34 +214,48 @@ class StreamTelegramBot {
       const data = query.data;
       const chatId = query.message.chat.id;
       const messageId = query.message.message_id;
+      const userId = query.from.id;
+      const username = query.from.username || 'Unknown';
+      
+      console.log(`[BUTTON_CLICK] User ${userId} (@${username}) clicked button: "${data}" in chat ${chatId}`);
       
       try {
         if (data.startsWith('setdir:')) {
           const dirAction = data.replace('setdir:', '');
+          console.log(`[COMPONENT] ProjectNavigator.handleSetdirCallback - action: "${dirAction}", chatId: ${chatId}, messageId: ${messageId}`);
           await this.projectNavigator.handleSetdirCallback(dirAction, chatId, messageId);
         } else if (data.startsWith('voice_')) {
+          console.log(`[COMPONENT] VoiceMessageHandler.handleVoiceCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.voiceHandler.handleVoiceCallback(data, chatId, messageId, query.from.id, this.processUserMessage.bind(this));
         } else if (data.startsWith('resume_session:')) {
           const sessionId = data.replace('resume_session:', '');
           const userId = this.getUserIdFromChat(chatId);
+          console.log(`[COMPONENT] SessionManager.handleSessionResume - sessionId: "${sessionId}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           // Update access time when resuming session
           this.sessionManager.storeSessionId(userId, sessionId);
           // Save to config for persistence
           await this.sessionManager.saveCurrentSessionToConfig(userId, sessionId);
           await this.sessionManager.handleSessionResume(sessionId, chatId, messageId, query.from.id);
         } else if (data.startsWith('model:')) {
+          console.log(`[COMPONENT] StreamTelegramBot.handleModelCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.handleModelCallback(data, chatId, messageId, query.from.id);
         } else if (data.startsWith('thinking:')) {
+          console.log(`[COMPONENT] StreamTelegramBot.handleThinkingModeCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.handleThinkingModeCallback(data, chatId, messageId, query.from.id);
         } else if (data.startsWith('diff:')) {
+          console.log(`[COMPONENT] GitDiffManager.handleDiffCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.gitDiffManager.handleDiffCallback(data, chatId, messageId, query.from.id);
         } else if (data.startsWith('session_page:')) {
           const page = parseInt(data.replace('session_page:', ''));
+          console.log(`[COMPONENT] SessionManager.handleSessionPageCallback - page: ${page}, chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.sessionManager.handleSessionPageCallback(page, chatId, messageId, query.from.id);
         } else if (data === 'page_info') {
+          console.log(`[COMPONENT] Non-interactive button - page_info, chatId: ${chatId}`);
           // Just answer the callback - page info button is non-interactive
           await this.bot.answerCallbackQuery(query.id, { text: 'Page indicator' });
           return;
+        } else {
+          console.log(`[COMPONENT] Unknown button data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
         }
         
         await this.bot.answerCallbackQuery(query.id);
@@ -233,7 +264,10 @@ class StreamTelegramBot {
         
         // Handle specific Telegram errors
         if (error.code === 'ETELEGRAM') {
-          if (error.response?.body?.includes('BUTTON_DATA_INVALID')) {
+          const errorBody = error.response?.body;
+          const errorMessage = typeof errorBody === 'string' ? errorBody : errorBody?.description || '';
+          
+          if (errorMessage.includes('BUTTON_DATA_INVALID')) {
             await this.bot.sendMessage(chatId, 
               '❌ *Button data error*\n\nProject list expired. Use /cd to refresh.',
               { parse_mode: 'Markdown' }
@@ -260,48 +294,92 @@ class StreamTelegramBot {
     });
 
     this.bot.onText(/\/status/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /status in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SessionManager.showSessionStatus - chatId: ${msg.chat.id}`);
       await this.sessionManager.showSessionStatus(msg.chat.id);
     });
 
     this.bot.onText(/\/new/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /new in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${msg.chat.id}`);
       await this.sessionManager.startNewSession(msg.chat.id);
     });
 
     this.bot.onText(/\/end/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /end in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SessionManager.endSession - chatId: ${msg.chat.id}`);
       await this.sessionManager.endSession(msg.chat.id);
     });
 
     this.bot.onText(/\/sessions/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /sessions in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SessionManager.showSessionHistory - chatId: ${msg.chat.id}`);
       await this.sessionManager.showSessionHistory(msg.chat.id);
     });
 
     this.bot.onText(/\/cd/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /cd in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] ProjectNavigator.showProjectSelection - chatId: ${msg.chat.id}`);
       await this.projectNavigator.showProjectSelection(msg.chat.id);
     });
 
     this.bot.onText(/\/pwd/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /pwd in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] StreamTelegramBot.showCurrentDirectory - chatId: ${msg.chat.id}`);
       await this.showCurrentDirectory(msg.chat.id);
     });
 
     // Model selection commands
     this.bot.onText(/\/sonnet/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /sonnet in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] StreamTelegramBot.setModel - model: "sonnet", chatId: ${msg.chat.id}`);
       await this.setModel(msg.chat.id, 'sonnet', 'Claude 4 Sonnet');
     });
 
     this.bot.onText(/\/opus/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /opus in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] StreamTelegramBot.setModel - model: "opus", chatId: ${msg.chat.id}`);
       await this.setModel(msg.chat.id, 'opus', 'Claude 4 Opus');
     });
 
     this.bot.onText(/\/model/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /model in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${msg.chat.id}`);
       await this.showModelSelection(msg.chat.id);
     });
 
     this.bot.onText(/\/think/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /think in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] StreamTelegramBot.showThinkingModeSelection - chatId: ${msg.chat.id}`);
       await this.showThinkingModeSelection(msg.chat.id);
     });
 
     // Git diff command
     this.bot.onText(/\/diff/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /diff in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] GitDiffManager.showGitDiff - chatId: ${msg.chat.id}`);
       await this.gitDiffManager.showGitDiff(msg.chat.id);
     });
   }
@@ -994,6 +1072,7 @@ class StreamTelegramBot {
         });
       });
       
+      console.log(`[Admin] User ${userId} granted admin access (first user)`);
       return true;
     }
     
@@ -1024,6 +1103,8 @@ class StreamTelegramBot {
    * Process user message (unified handler for text and voice)
    */
   async processUserMessage(text, userId, chatId) {
+    console.log(`[ProcessUserMessage] Starting to process message for user ${userId}: "${text}"`);
+    
     // Admin access already checked in message handler
     
     // Apply thinking mode to message (like in claudia)
@@ -1037,49 +1118,58 @@ class StreamTelegramBot {
       console.log(`[User ${userId}] Applied thinking mode: ${thinkingMode.name} (${thinkingMode.phrase})`);
     }
     
+    console.log(`[ProcessUserMessage] Final text to send to Claude: "${finalText}"`);
+    
     // Get or create user session
     let session = this.sessionManager.getUserSession(userId);
     
     if (!session) {
       // First message - create new session
+      console.log(`[ProcessUserMessage] Creating new session for user ${userId}`);
       session = await this.sessionManager.createUserSession(userId, chatId);
       await this.sendSessionInit(chatId, session);
+    } else {
+      console.log(`[ProcessUserMessage] Using existing session for user ${userId}, message count: ${session.messageCount}`);
     }
 
     // Check if previous request is still processing
     if (session.processor.isActive()) {
+      console.log(`[ProcessUserMessage] Previous request still processing for user ${userId}`);
       await this.bot.sendMessage(chatId, '⏳ *Processing previous request...*\nPlease wait or use /cancel', 
         { parse_mode: 'Markdown' });
       return;
     }
 
+    console.log(`[ProcessUserMessage] Starting typing indicator for chat ${chatId}`);
     // Start typing indicator
     await this.activityIndicator.start(chatId);
 
     try {
       // Check if we have a stored session ID to resume
       const sessionId = this.getStoredSessionId(userId);
+      console.log(`[ProcessUserMessage] Stored session ID for user ${userId}: ${sessionId ? sessionId.slice(-8) : 'none'}`);
       
       if (sessionId) {
         // Resume existing session with -r flag
-        console.log(`[User ${userId}] Resuming session: ${sessionId}`);
+        console.log(`[ProcessUserMessage] Resuming session for user ${userId}: ${sessionId.slice(-8)}`);
         await session.processor.resumeSession(sessionId, finalText);
       } else if (session.messageCount === 0) {
         // First message - start new conversation
-        console.log(`[User ${userId}] Creating new session`);
+        console.log(`[ProcessUserMessage] Starting new conversation for user ${userId} (message count: ${session.messageCount})`);
         await session.processor.startNewConversation(finalText);
       } else {
         // Continue conversation with -c flag (fallback)
-        console.log(`[User ${userId}] Continuing conversation`);
+        console.log(`[ProcessUserMessage] Continuing conversation for user ${userId} (message count: ${session.messageCount})`);
         await session.processor.continueConversation(finalText);
       }
       
       session.messageCount++;
+      console.log(`[ProcessUserMessage] Claude invocation completed, incremented message count to: ${session.messageCount}`);
       
       // Activity indicator will be stopped when Claude completes (in 'complete' event)
       
     } catch (error) {
-      console.error(`[User ${userId}] Error starting Claude:`, error);
+      console.error(`[ProcessUserMessage] Error starting Claude for user ${userId}:`, error);
       
       // Error - stop typing indicator
       await this.activityIndicator.stop(chatId);

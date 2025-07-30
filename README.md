@@ -27,11 +27,64 @@ This bot runs on your development machine and connects to your existing Claude C
 
 ## 📦 Installation
 
+### Development Setup
 ```bash
 git clone <repository-url>
 cd claude-code-telegram-control
 npm install
 ```
+
+### PM2 Production Setup
+
+For production deployment with PM2 process manager:
+
+#### Prerequisites
+```bash
+# Update system
+sudo apt update
+
+# Install Node.js and npm (if not already installed)
+sudo apt install -y nodejs npm
+
+# Verify installations
+node --version    # Should be 14+
+npm --version
+
+# Install PM2 globally
+npm install -g pm2
+```
+
+#### Setup Process
+```bash
+# 1. Clone and prepare the project
+git clone <repository-url>
+cd claude-code-telegram-control
+npm install
+
+# 2. Configure your bots (create configs/bot1.json, etc.)
+npm run setup   # Interactive setup for each bot
+
+# 3. Install PM2 log rotation
+pm2 install pm2-logrotate
+
+# 4. Start bots with PM2
+pm2 start ecosystem.config.js
+
+# 5. Setup auto-startup on system boot
+pm2 startup
+# Run the command PM2 shows you (requires sudo)
+
+# 6. Save current process list
+pm2 save
+```
+
+PM2 provides:
+- ✅ **Auto-restart** on crash (configurable limits)
+- ✅ **Auto-start** on system boot
+- ✅ **No sudo required** for daily management
+- ✅ **Memory leak protection** (auto-restart on limit)
+- ✅ **Built-in log rotation**
+- ✅ **Real-time monitoring** with `pm2 monit`
 
 ## ⚙️ Setup
 
@@ -65,6 +118,8 @@ Create configuration files in `configs/` directory:
 ## 🚀 Usage
 
 ### ▶️ Starting the Bot
+
+#### Development Mode (Manual)
 ```bash
 # Start default bot
 npm run bot1
@@ -76,6 +131,40 @@ npm run bot3
 # Development mode with auto-restart
 npm run dev
 ```
+
+#### Production Mode (PM2 Process Manager)
+For production deployment with PM2 process manager:
+
+```bash
+# Start all bots
+pm2 start ecosystem.config.js
+
+# Management commands (NO SUDO REQUIRED!)
+pm2 restart bot1        # Restart specific bot
+pm2 restart all         # Restart all bots
+pm2 stop bot1          # Stop specific bot
+pm2 start bot1         # Start specific bot
+pm2 delete bot1        # Remove bot from PM2
+
+# Monitoring and logs
+pm2 status             # Show all processes
+pm2 logs               # Show all logs
+pm2 logs bot1          # Show logs for specific bot
+pm2 monit              # Interactive monitoring dashboard
+
+# Updates and maintenance
+git pull               # Update code
+pm2 restart all        # Restart with new code
+```
+
+PM2 process manager provides:
+- ✅ **Automatic startup** on system boot
+- 🔄 **Auto-restart** on crash (configurable limits)
+- 📋 **Centralized logging** with rotation
+- 🛡️ **Memory leak protection** (512MB restart threshold)
+- 📊 **Real-time monitoring** with `pm2 monit`
+- 🚀 **Zero-downtime deployments**
+- ⚡ **No sudo required** for daily operations
 
 ### 📝 Basic Commands
 - `/start` - 🎦 Initialize bot and show keyboard
@@ -184,6 +273,8 @@ claude-code-telegram-control/
 - Check Nexara account balance
 
 ### 🔍 Debug Commands
+
+#### Development Mode
 ```bash
 # Check configured bots
 npm run list-bots
@@ -193,6 +284,27 @@ claude --version
 
 # View bot logs
 npm run bot1 # Check console output
+```
+
+#### Production Mode (PM2)
+```bash
+# Check process status
+pm2 status
+
+# View live logs
+pm2 logs bot1 -f
+
+# View recent logs
+pm2 logs bot1 --lines 100
+
+# View all processes logs
+pm2 logs
+
+# Interactive monitoring
+pm2 monit
+
+# Process information
+pm2 info bot1
 ```
 
 ## 👨‍💻 Development

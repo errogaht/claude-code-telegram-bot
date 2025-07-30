@@ -1,0 +1,797 @@
+/**
+ * Unit Tests for SessionManager
+ * Tests session handling, state persistence, and processor event management
+ */
+
+const SessionManager = require('../../SessionManager');
+const EventEmitter = require('events');
+
+// Mock dependencies
+jest.mock('../../claude-stream-processor');
+jest.mock('fs');
+
+const createMockProcessor = () => {
+  const processor = new EventEmitter();
+  processor.isActive = jest.fn().mockReturnValue(false);
+  processor.getCurrentSessionId = jest.fn().mockReturnValue('test-session-id');
+  processor.cancel = jest.fn();
+  return processor;
+};
+
+const createMockFormatter = () => ({
+  formatSessionInit: jest.fn().mockReturnValue({ text: 'Session started', parse_mode: 'HTML' }),
+  formatAssistantText: jest.fn().mockReturnValue({ text: 'Assistant text', parse_mode: 'HTML' }),
+  formatThinking: jest.fn().mockReturnValue({ text: 'Thinking...', parse_mode: 'HTML' }),
+  formatTodoWrite: jest.fn().mockReturnValue({ text: 'Todo list', parse_mode: 'HTML' }),
+  formatFileEdit: jest.fn().mockReturnValue({ text: 'File edited', parse_mode: 'HTML' }),
+  formatFileWrite: jest.fn().mockReturnValue({ text: 'File written', parse_mode: 'HTML' }),
+  formatFileRead: jest.fn().mockReturnValue({ text: 'File read', parse_mode: 'HTML' }),
+  formatBashCommand: jest.fn().mockReturnValue({ text: 'Bash command', parse_mode: 'HTML' }),
+  formatTaskSpawn: jest.fn().mockReturnValue({ text: 'Task spawned', parse_mode: 'HTML' }),
+  formatMCPTool: jest.fn().mockReturnValue({ text: 'MCP tool', parse_mode: 'HTML' }),
+  formatExecutionResult: jest.fn().mockReturnValue({ text: 'Execution complete', parse_mode: 'HTML' }),
+  formatError: jest.fn().mockReturnValue({ text: 'Error occurred', parse_mode: 'HTML' }),
+  todosChanged: jest.fn().mockReturnValue(true)
+});
+
+const createMockBot = () => ({
+  sendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
+  editMessageText: jest.fn().mockResolvedValue(true),
+  deleteMessage: jest.fn().mockResolvedValue(true)
+});
+
+const createMockActivityIndicator = () => ({
+  stop: jest.fn().mockResolvedValue()
+});
+
+const createMockMainBot = () => ({
+  safeSendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
+  getUserIdFromChat: jest.fn().mockReturnValue('user123'),
+  sendSessionInit: jest.fn().mockResolvedValue(),
+  keyboardHandlers: {
+    getReplyKeyboardMarkup: jest.fn().mockReturnValue({})
+  }
+});
+
+describe('SessionManager', () => {
+  let sessionManager;
+  let mockFormatter;
+  let mockBot;
+  let mockActivityIndicator;
+  let mockMainBot;
+  let mockActiveProcessors;
+  let mockOptions;
+
+  beforeEach(() => {
+    mockFormatter = createMockFormatter();
+    mockBot = createMockBot();
+    mockActivityIndicator = createMockActivityIndicator();
+    mockMainBot = createMockMainBot();
+    mockActiveProcessors = new Set();
+    mockOptions = {
+      model: 'claude-3',
+      workingDirectory: '/test/dir',
+      configFilePath: '/test/config.json'
+    };
+
+    sessionManager = new SessionManager(
+      mockFormatter,
+      mockOptions,
+      mockBot,
+      mockActiveProcessors,
+      mockActivityIndicator,
+      mockMainBot
+    );
+
+    jest.clearAllMocks();
+  });
+
+  describe('Constructor', () => {
+    test('should initialize with provided dependencies', () => {
+      expect(sessionManager.formatter).toBe(mockFormatter);
+      expect(sessionManager.options).toBe(mockOptions);
+      expect(sessionManager.bot).toBe(mockBot);
+      expect(sessionManager.activeProcessors).toBe(mockActiveProcessors);
+      expect(sessionManager.activityIndicator).toBe(mockActivityIndicator);
+      expect(sessionManager.mainBot).toBe(mockMainBot);
+    });
+
+    test('should initialize empty session storage', () => {
+      expect(sessionManager.userSessions).toBeInstanceOf(Map);
+      expect(sessionManager.sessionStorage).toBeInstanceOf(Map);
+      expect(sessionManager.userSessions.size).toBe(0);
+      expect(sessionManager.sessionStorage.size).toBe(0);
+    });
+
+    test('should store config file path', () => {
+      expect(sessionManager.configFilePath).toBe('/test/config.json');
+    });
+  });
+
+  describe('Create User Session', () => {
+    test('should create new session with processor', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+
+      const session = await sessionManager.createUserSession('user123', 'chat456');
+
+      expect(session).toMatchObject({
+        userId: 'user123',
+        chatId: 'chat456',
+        processor: mockProcessor,
+        messageCount: 0,
+        lastTodoMessageId: null,
+        lastTodos: null
+      });
+      expect(session.createdAt).toBeInstanceOf(Date);
+    });
+
+    test('should add processor to active processors set', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+
+      await sessionManager.createUserSession('user123', 'chat456');
+
+      expect(mockActiveProcessors.has(mockProcessor)).toBe(true);
+    });
+
+    test('should store session in userSessions map', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+
+      await sessionManager.createUserSession('user123', 'chat456');
+
+      expect(sessionManager.userSessions.has('user123')).toBe(true);
+      expect(sessionManager.userSessions.get('user123').userId).toBe('user123');
+    });
+
+    test('should use user model preference if available', async () => {
+      sessionManager.getUserModel = jest.fn().mockReturnValue('claude-2');
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+
+      await sessionManager.createUserSession('user123', 'chat456');
+
+      expect(mockClaudeStreamProcessor).toHaveBeenCalledWith({
+        model: 'claude-2',
+        workingDirectory: '/test/dir'
+      });
+    });
+
+    test('should fall back to default model', async () => {
+      sessionManager.getUserModel = jest.fn().mockReturnValue(null);
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+
+      await sessionManager.createUserSession('user123', 'chat456');
+
+      expect(mockClaudeStreamProcessor).toHaveBeenCalledWith({
+        model: 'claude-3',
+        workingDirectory: '/test/dir'
+      });
+    });
+  });
+
+  describe('Processor Event Handling', () => {
+    let mockProcessor;
+    let session;
+
+    beforeEach(async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+
+      session = await sessionManager.createUserSession('user123', 'chat456');
+    });
+
+    test('should handle session-init event', async () => {
+      const sessionData = { sessionId: 'new-session-123' };
+
+      mockProcessor.emit('session-init', sessionData);
+      await new Promise(resolve => process.nextTick(resolve)); // Wait for async handlers
+
+      expect(mockFormatter.formatSessionInit).toHaveBeenCalledWith(sessionData);
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Session started',
+        { parse_mode: 'HTML' }
+      );
+      expect(session.sessionId).toBe('new-session-123');
+    });
+
+    test('should handle assistant-text event', async () => {
+      const textData = { text: 'Hello from Claude' };
+
+      mockProcessor.emit('assistant-text', textData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatAssistantText).toHaveBeenCalledWith('Hello from Claude');
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Assistant text',
+        { parse_mode: 'HTML' }
+      );
+    });
+
+    test('should handle assistant-thinking event', async () => {
+      const thinkingData = { thinking: 'Analyzing request', signature: 'sig' };
+
+      mockProcessor.emit('assistant-thinking', thinkingData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatThinking).toHaveBeenCalledWith('Analyzing request', 'sig');
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Thinking...',
+        { parse_mode: 'HTML' }
+      );
+    });
+
+    test('should handle todo-write event', async () => {
+      const todoData = { todos: [{ id: '1', content: 'Task 1', status: 'pending' }], toolId: 'tool1' };
+      sessionManager.handleTodoWrite = jest.fn();
+
+      mockProcessor.emit('todo-write', todoData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(sessionManager.handleTodoWrite).toHaveBeenCalledWith(
+        session,
+        todoData.todos,
+        todoData.toolId
+      );
+    });
+
+    test('should handle file operation events', async () => {
+      const fileEditData = { filePath: '/test/file.js', oldString: 'old', newString: 'new' };
+      const fileWriteData = { filePath: '/test/new.js', content: 'content' };
+      const fileReadData = { filePath: '/test/read.js' };
+
+      mockProcessor.emit('file-edit', fileEditData);
+      mockProcessor.emit('file-write', fileWriteData);
+      mockProcessor.emit('file-read', fileReadData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatFileEdit).toHaveBeenCalledWith('/test/file.js', 'old', 'new');
+      expect(mockFormatter.formatFileWrite).toHaveBeenCalledWith('/test/new.js', 'content');
+      expect(mockFormatter.formatFileRead).toHaveBeenCalledWith('/test/read.js');
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledTimes(3);
+    });
+
+    test('should handle bash-command event', async () => {
+      const bashData = { command: 'ls -la', description: 'List files' };
+
+      mockProcessor.emit('bash-command', bashData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatBashCommand).toHaveBeenCalledWith('ls -la', 'List files');
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+    });
+
+    test('should handle task-spawn event', async () => {
+      const taskData = { description: 'Analyze code', prompt: 'Check quality', subagentType: 'analyzer' };
+
+      mockProcessor.emit('task-spawn', taskData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatTaskSpawn).toHaveBeenCalledWith('Analyze code', 'Check quality', 'analyzer');
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+    });
+
+    test('should handle mcp-tool event', async () => {
+      const mcpData = { toolName: 'test_tool', input: { param: 'value' } };
+
+      mockProcessor.emit('mcp-tool', mcpData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockFormatter.formatMCPTool).toHaveBeenCalledWith('test_tool', { param: 'value' });
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+    });
+
+    test('should handle complete event', async () => {
+      const completeData = { success: true, cost: 0.01, duration: 5000 };
+
+      mockProcessor.emit('complete', completeData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockActivityIndicator.stop).toHaveBeenCalledWith('chat456');
+      expect(mockFormatter.formatExecutionResult).toHaveBeenCalledWith(completeData, session.sessionId);
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+    });
+
+    test('should handle error event', async () => {
+      const error = new Error('Test error');
+      sessionManager.sendError = jest.fn();
+
+      mockProcessor.emit('error', error);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockActivityIndicator.stop).toHaveBeenCalledWith('chat456');
+      expect(sessionManager.sendError).toHaveBeenCalledWith('chat456', error);
+    });
+  });
+
+  describe('Session Storage Management', () => {
+    test('should store session ID with metadata', () => {
+      sessionManager.storeSessionId('user123', 'session-456');
+
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.currentSessionId).toBe('session-456');
+      expect(storage.sessionHistory).toContain('session-456');
+      expect(storage.sessionAccessTimes.has('session-456')).toBe(true);
+    });
+
+    test('should add session to history', () => {
+      sessionManager.addSessionToHistory('user123', 'session-1');
+      sessionManager.addSessionToHistory('user123', 'session-2');
+
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.sessionHistory).toEqual(['session-1', 'session-2']);
+    });
+
+    test('should limit session history to 50 sessions', () => {
+      // Add 55 sessions
+      for (let i = 1; i <= 55; i++) {
+        sessionManager.addSessionToHistory('user123', `session-${i}`);
+      }
+
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.sessionHistory.length).toBe(50);
+      expect(storage.sessionHistory[0]).toBe('session-6'); // First 5 should be removed
+      expect(storage.sessionHistory[49]).toBe('session-55');
+    });
+
+    test('should not duplicate sessions in history', () => {
+      sessionManager.addSessionToHistory('user123', 'session-1');
+      sessionManager.addSessionToHistory('user123', 'session-1');
+
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.sessionHistory).toEqual(['session-1']);
+    });
+
+    test('should clear current session ID', () => {
+      sessionManager.storeSessionId('user123', 'session-456');
+      sessionManager.clearCurrentSessionId('user123');
+
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.currentSessionId).toBeNull();
+    });
+
+    test('should get session history sorted by access time', () => {
+      const storage = {
+        currentSessionId: null,
+        sessionHistory: ['session-1', 'session-2', 'session-3'],
+        sessionAccessTimes: new Map([
+          ['session-1', 1000],
+          ['session-2', 3000],
+          ['session-3', 2000]
+        ])
+      };
+      sessionManager.sessionStorage.set('user123', storage);
+
+      const history = sessionManager.getSessionHistory('user123');
+      expect(history).toEqual(['session-2', 'session-3', 'session-1']); // Sorted by access time, newest first
+    });
+
+    test('should return empty array for user with no history', () => {
+      const history = sessionManager.getSessionHistory('nonexistent');
+      expect(history).toEqual([]);
+    });
+  });
+
+  describe('Config File Persistence', () => {
+    beforeEach(() => {
+      const fs = require('fs');
+      fs.readFileSync.mockReturnValue(JSON.stringify({ existing: 'config' }));
+      fs.writeFileSync = jest.fn();
+    });
+
+    test('should save session to config file', async () => {
+      const fs = require('fs');
+      await sessionManager.saveCurrentSessionToConfig('user123', 'session-456');
+
+      expect(fs.readFileSync).toHaveBeenCalledWith('/test/config.json', 'utf8');
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/test/config.json',
+        expect.stringContaining('"sessionId": "session-456"')
+      );
+    });
+
+    test('should handle config file read errors', async () => {
+      const fs = require('fs');
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      fs.readFileSync.mockImplementation(() => {
+        throw new Error('File not found');
+      });
+
+      await sessionManager.saveCurrentSessionToConfig('user123', 'session-456');
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error saving session to config'),
+        'File not found'
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    test('should skip saving if no config file path', async () => {
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      sessionManager.configFilePath = null;
+
+      await sessionManager.saveCurrentSessionToConfig('user123', 'session-456');
+
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('No config file path provided')
+      );
+
+      consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe('Todo Management', () => {
+    let session;
+
+    beforeEach(async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+      session = await sessionManager.createUserSession('user123', 'chat456');
+    });
+
+    test('should send new todo message if no previous message', async () => {
+      const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
+
+      await sessionManager.handleTodoWrite(session, todos, 'tool1');
+
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Todo list',
+        { parse_mode: 'HTML' }
+      );
+      expect(session.lastTodoMessageId).toBe(123);
+      expect(session.lastTodos).toBe(todos);
+    });
+
+    test('should edit existing todo message if available', async () => {
+      const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
+      session.lastTodoMessageId = 456;
+      session.lastTodos = [];
+
+      await sessionManager.handleTodoWrite(session, todos, 'tool1');
+
+      expect(mockBot.editMessageText).toHaveBeenCalledWith(
+        'Todo list',
+        {
+          chat_id: 'chat456',
+          message_id: 456,
+          parse_mode: 'HTML'
+        }
+      );
+    });
+
+    test('should send new message if edit fails', async () => {
+      const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
+      session.lastTodoMessageId = 456;
+      mockBot.editMessageText.mockRejectedValueOnce(new Error('Edit failed'));
+
+      await sessionManager.handleTodoWrite(session, todos, 'tool1');
+
+      expect(mockBot.editMessageText).toHaveBeenCalled();
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Todo list',
+        { parse_mode: 'HTML' }
+      );
+      expect(session.lastTodoMessageId).toBe(123);
+    });
+
+    test('should skip update if todos unchanged', async () => {
+      const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
+      session.lastTodos = todos;
+      mockFormatter.todosChanged.mockReturnValue(false);
+
+      await sessionManager.handleTodoWrite(session, todos, 'tool1');
+
+      expect(mockBot.sendMessage).not.toHaveBeenCalled();
+      expect(mockBot.editMessageText).not.toHaveBeenCalled();
+    });
+
+    test('should handle todo update errors gracefully', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
+      mockBot.sendMessage.mockRejectedValueOnce(new Error('Send failed'));
+
+      await sessionManager.handleTodoWrite(session, todos, 'tool1');
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error updating todos'),
+        expect.any(Error)
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('Session Lifecycle Management', () => {
+    test('should get user session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+      const session = await sessionManager.createUserSession('user123', 'chat456');
+
+      const retrievedSession = sessionManager.getUserSession('user123');
+      expect(retrievedSession).toBe(session);
+    });
+
+    test('should delete user session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+      const session = await sessionManager.createUserSession('user123', 'chat456');
+      session.sessionId = 'test-session';
+
+      sessionManager.deleteUserSession('user123');
+
+      expect(sessionManager.userSessions.has('user123')).toBe(false);
+      expect(mockActiveProcessors.has(mockProcessor)).toBe(false);
+      // Should add to history
+      const storage = sessionManager.sessionStorage.get('user123');
+      expect(storage.sessionHistory).toContain('test-session');
+    });
+
+    test('should cleanup all sessions', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+      
+      const session1 = await sessionManager.createUserSession('user1', 'chat1');
+      const session2 = await sessionManager.createUserSession('user2', 'chat2');
+      session1.sessionId = 'session-1';
+      session2.sessionId = 'session-2';
+
+      sessionManager.cleanup();
+
+      expect(sessionManager.userSessions.size).toBe(0);
+      // Sessions should be preserved in history
+      expect(sessionManager.sessionStorage.size).toBe(2);
+    });
+
+    test('should cancel user session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+      await sessionManager.createUserSession('user123', 'chat456');
+
+      await sessionManager.cancelUserSession('chat456');
+
+      expect(mockProcessor.cancel).toHaveBeenCalled();
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        '❌ *Session cancelled*',
+        { parse_mode: 'Markdown' }
+      );
+    });
+
+    test('should handle cancel request with no active session', async () => {
+      await sessionManager.cancelUserSession('chat456');
+
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        '⚠️ *No active session to cancel*',
+        { parse_mode: 'Markdown' }
+      );
+    });
+
+    test('should show session status with active session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockProcessor.isActive.mockReturnValue(true);
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+      
+      const session = await sessionManager.createUserSession('user123', 'chat456');
+      session.sessionId = 'test-session-id';
+      session.messageCount = 5;
+
+      await sessionManager.showSessionStatus('chat456');
+
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        expect.stringContaining('📊 *Session Status*'),
+        { parse_mode: 'Markdown' }
+      );
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        expect.stringContaining('🔄 Processing'),
+        { parse_mode: 'Markdown' }
+      );
+    });
+
+    test('should show session status with no session', async () => {
+      await sessionManager.showSessionStatus('chat456');
+
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        '📋 *No active session*\n\nSend a message to start!',
+        { parse_mode: 'Markdown' }
+      );
+    });
+  });
+
+  describe('Error Handling', () => {
+    test('should send error message with formatting', async () => {
+      const error = new Error('Test error');
+
+      await sessionManager.sendError('chat456', error);
+
+      expect(mockFormatter.formatError).toHaveBeenCalledWith(error);
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'Error occurred',
+        { forceNotification: true }
+      );
+    });
+
+    test('should handle safeSendMessage errors', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      mockMainBot.safeSendMessage.mockRejectedValueOnce(new Error('Send failed'));
+
+      await expect(sessionManager.safeSendMessage('chat456', 'test')).rejects.toThrow('Send failed');
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to send message'),
+        'Send failed'
+      );
+
+      consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe('User Model Preferences', () => {
+    test('should return null for getUserModel placeholder', () => {
+      const model = sessionManager.getUserModel('user123');
+      expect(model).toBeNull();
+    });
+  });
+
+  describe('Safe Send Message Wrapper', () => {
+    test('should delegate to main bot safeSendMessage', async () => {
+      await sessionManager.safeSendMessage('chat456', 'test message', { option: 'value' });
+
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'test message',
+        { option: 'value' }
+      );
+    });
+
+    test('should use empty options by default', async () => {
+      await sessionManager.safeSendMessage('chat456', 'test message');
+
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        'chat456',
+        'test message',
+        {}
+      );
+    });
+  });
+
+  describe('Session Statistics', () => {
+    test('should return correct stats', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+      
+      await sessionManager.createUserSession('user1', 'chat1');
+      await sessionManager.createUserSession('user2', 'chat2');
+      sessionManager.storeSessionId('user1', 'session-1');
+      sessionManager.storeSessionId('user3', 'session-3'); // User with only stored session
+
+      const stats = sessionManager.getStats();
+      expect(stats.activeSessions).toBe(2);
+      expect(stats.totalUsers).toBe(2); // Only users with active sessions are counted
+    });
+  });
+
+  describe('Start New Session', () => {
+    test('should start new session after canceling existing', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+      
+      // Create existing session
+      const existingSession = await sessionManager.createUserSession('user123', 'chat456');
+      existingSession.sessionId = 'old-session';
+
+      await sessionManager.startNewSession('chat456');
+
+      expect(mockProcessor.cancel).toHaveBeenCalled();
+      expect(mockMainBot.sendSessionInit).toHaveBeenCalled();
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        expect.stringContaining('🆕 *New session started*'),
+        expect.objectContaining({ parse_mode: 'Markdown' })
+      );
+    });
+
+    test('should start new session when no existing session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      mockClaudeStreamProcessor.mockImplementation(() => createMockProcessor());
+
+      await sessionManager.startNewSession('chat456');
+
+      expect(mockMainBot.sendSessionInit).toHaveBeenCalled();
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        expect.stringContaining('🆕 *New session started*'),
+        expect.objectContaining({ parse_mode: 'Markdown' })
+      );
+    });
+  });
+
+  describe('End Session', () => {
+    test('should end active session', async () => {
+      const mockClaudeStreamProcessor = require('../../claude-stream-processor');
+      const mockProcessor = createMockProcessor();
+      mockClaudeStreamProcessor.mockImplementation(() => mockProcessor);
+      
+      const session = await sessionManager.createUserSession('user123', 'chat456');
+      session.sessionId = 'test-session';
+      session.messageCount = 10;
+
+      await sessionManager.endSession('chat456');
+
+      expect(mockProcessor.cancel).toHaveBeenCalled();
+      expect(sessionManager.userSessions.has('user123')).toBe(false);
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        expect.stringContaining('🔚 *Session ended*'),
+        expect.objectContaining({ parse_mode: 'Markdown' })
+      );
+    });
+
+    test('should handle end session with no active session', async () => {
+      await sessionManager.endSession('chat456');
+
+      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+        'chat456',
+        '⚠️ *No active session to end*',
+        expect.objectContaining({ parse_mode: 'Markdown' })
+      );
+    });
+  });
+
+  describe('Session Storage Access', () => {
+    test('should get stored session ID', () => {
+      sessionManager.storeSessionId('user123', 'session-456');
+      
+      const storedId = sessionManager.getStoredSessionId('user123');
+      expect(storedId).toBe('session-456');
+    });
+
+    test('should return null for non-existent user', () => {
+      const storedId = sessionManager.getStoredSessionId('nonexistent');
+      expect(storedId).toBeNull();
+    });
+  });
+
+  describe('Time Formatting Utility', () => {
+    test('should format recent times correctly', () => {
+      const now = new Date();
+      
+      expect(sessionManager.getTimeAgo(now.toISOString())).toBe('just now');
+      
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+      expect(sessionManager.getTimeAgo(fiveMinutesAgo.toISOString())).toBe('5m ago');
+      
+      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+      expect(sessionManager.getTimeAgo(twoHoursAgo.toISOString())).toBe('2h ago');
+      
+      const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+      expect(sessionManager.getTimeAgo(threeDaysAgo.toISOString())).toBe('3d ago');
+    });
+  });
+
+  describe('Current Directory', () => {
+    test('should return working directory', () => {
+      const dir = sessionManager.getCurrentDirectory('user123');
+      expect(dir).toBe('/test/dir');
+    });
+  });
+});
