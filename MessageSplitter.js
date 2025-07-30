@@ -44,19 +44,27 @@ class MessageSplitter {
         }
         
       } catch (error) {
-        console.error(`❌ Failed to send part ${i + 1}/${chunks.length}:`, error.message);
-        
-        // Log the full problematic text for debugging
-        console.error(`🔍 Problematic chunk content (${chunk.length} chars):`);
-        console.error('--- START CHUNK ---');
-        console.error(chunk);
-        console.error('--- END CHUNK ---');
+        // Only log errors in non-test environments to reduce test noise
+        if (process.env.NODE_ENV !== 'test') {
+          console.error(`❌ Failed to send part ${i + 1}/${chunks.length}:`, error.message);
+          console.error(`🔍 Problematic chunk content (${chunk.length} chars):`);
+          console.error('--- START CHUNK ---');
+          console.error(chunk);
+          console.error('--- END CHUNK ---');
+        }
         
         // If this part fails, try to send error info
-        await bot.sendMessage(chatId, 
-          `❌ *Message Part Error*\n\nFailed to send part ${i + 1} of ${chunks.length}.\nLength: ${chunk.length} chars`,
-          { parse_mode: undefined }
-        );
+        try {
+          await bot.sendMessage(chatId, 
+            `❌ *Message Part Error*\n\nFailed to send part ${i + 1} of ${chunks.length}.\nLength: ${chunk.length} chars`,
+            { parse_mode: undefined }
+          );
+        } catch (errorSendingError) {
+          // Only log errors in non-test environments
+          if (process.env.NODE_ENV !== 'test') {
+            console.error(`❌ Failed to send error message:`, errorSendingError.message);
+          }
+        }
       }
     }
   }
@@ -261,6 +269,10 @@ class MessageSplitter {
    * Plain text splitting (original logic)
    */
   splitPlainMessage(text, maxLength) {
+    if (!text || typeof text !== 'string') {
+      return [];
+    }
+    
     const chunks = [];
     let remaining = text;
     
@@ -278,7 +290,7 @@ class MessageSplitter {
       
       for (const breakChar of goodBreaks) {
         const lastBreak = remaining.lastIndexOf(breakChar, maxLength);
-        if (lastBreak > maxLength * 0.7) { // Don't split too early
+        if (lastBreak > maxLength * 0.3) { // Don't split too early (30% threshold)
           splitPoint = lastBreak + breakChar.length;
           break;
         }
@@ -313,7 +325,7 @@ class MessageSplitter {
       
       for (const breakChar of goodBreaks) {
         const lastBreak = remaining.lastIndexOf(breakChar, maxLength);
-        if (lastBreak > maxLength * 0.7) { // Don't split too early
+        if (lastBreak > maxLength * 0.3) { // Don't split too early (30% threshold)
           splitPoint = lastBreak + breakChar.length;
           break;
         }

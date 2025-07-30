@@ -1,4 +1,3 @@
-const fs = require('fs');
 const path = require('path');
 const MessageSplitter = require('./MessageSplitter');
 
@@ -115,8 +114,15 @@ class GitDiffManager {
       const allNumStats = [];
       
       modifiedFiles.forEach(line => {
+        // Git status --porcelain format: XY filename
+        // X and Y are status codes, followed by space(s), then filename
         const status = line.substring(0, 2);
-        const filename = line.substring(3);
+        // Find the first non-space character after the status to get the filename
+        let filenameStart = 2;
+        while (filenameStart < line.length && line.charAt(filenameStart) === ' ') {
+          filenameStart++;
+        }
+        const filename = line.substring(filenameStart);
         
         if (status.includes('??')) {
           // Untracked file - get line count
@@ -153,15 +159,18 @@ class GitDiffManager {
       // Use combined file list (git diff + untracked files) as nameStatus
       const nameStatus = allFiles.length > 0 ? allFiles : gitDiffNameStatus;
       
+      
       // Combine numStats from git diff with untracked file stats
       const combinedNumStats = [...numStats, ...allNumStats];
+      
+      const hasChanges = modifiedFiles.length > 0 || (diffStats.length > 0 && diffStats.trim() !== '');
       
       return {
         modifiedFiles,
         diffStats,
         nameStatus,
         numStats: combinedNumStats,
-        hasChanges: modifiedFiles.length > 0 || diffStats.length > 0
+        hasChanges
       };
       
     } catch (error) {
@@ -229,8 +238,7 @@ class GitDiffManager {
     const keyboard = {
       inline_keyboard: [
         [
-          { text: '📋 File List', callback_data: 'diff:files:0' },
-          { text: '📄 File Details', callback_data: 'diff:file:0' }
+          { text: '📋 File List', callback_data: 'diff:files:0' }
         ],
         [
           { text: '📊 Stats Only', callback_data: 'diff:stats' },
@@ -254,6 +262,7 @@ class GitDiffManager {
     const endIndex = startIndex + filesPerPage;
     const files = gitStatus.nameStatus.slice(startIndex, endIndex);
     const totalPages = Math.ceil(gitStatus.nameStatus.length / filesPerPage);
+    
     
     let text = `📋 *Changed Files* (Page ${page + 1}/${totalPages})\n\n`;
     
@@ -286,8 +295,9 @@ class GitDiffManager {
       // First file
       const index1 = startIndex + i;
       const file1 = files[i].split('\t')[1];
+      const shortName1 = path.basename(file1);
       row.push({
-        text: `${i + 1}. ${path.basename(file1).substring(0, 15)}`,
+        text: `${i + 1}. ${shortName1.length > 20 ? shortName1.substring(0, 17) + '...' : shortName1}`,
         callback_data: `diff:file:${index1}`
       });
       
@@ -295,8 +305,9 @@ class GitDiffManager {
       if (i + 1 < files.length) {
         const index2 = startIndex + i + 1;
         const file2 = files[i + 1].split('\t')[1];
+        const shortName2 = path.basename(file2);
         row.push({
-          text: `${i + 2}. ${path.basename(file2).substring(0, 15)}`,
+          text: `${i + 2}. ${shortName2.length > 20 ? shortName2.substring(0, 17) + '...' : shortName2}`,
           callback_data: `diff:file:${index2}`
         });
       }
@@ -774,7 +785,7 @@ class GitDiffManager {
    * Escape markdown special characters
    */
   escapeMarkdown(text) {
-    return text.replace(/([_*\[\]()~`>#+=|{}.!-])/g, '\\$1');
+    return text.replace(/([_*\[\]()~`>#+=|{}!-])/g, '\\$1');
   }
 
   /**

@@ -10,7 +10,25 @@
     "bot2": "node scripts/start-bot.js bot2",
     "bot3": "node scripts/start-bot.js bot3",
     "dev": "nodemon scripts/start-bot.js bot1",
-    "test": "node test-stream.js",
+    "test": "jest",
+    "test:real-bot:watch": "jest --config jest.real-bot.config.js --watch",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:real-bot": "jest --config jest.real-bot.config.js --detectOpenHandles",
+    "test:real-bot:start": "jest tests/real-bot/start-command.test.js --detectOpenHandles",
+    "test:real-bot:buttons": "jest tests/real-bot/button-interactions.test.js --detectOpenHandles",
+    "test:real-bot:voice": "jest tests/real-bot/voice-message.test.js --detectOpenHandles",
+    "test:real-bot:errors": "jest tests/real-bot/error-scenarios.test.js --detectOpenHandles",
+    "test:real-bot:configs": "jest tests/real-bot/multi-config.test.js --detectOpenHandles",
+    "test:real-bot:suite": "jest tests/real-bot/real-bot-test-suite.test.js --detectOpenHandles",
+    "test:failures": "jest --verbose=false --silent",
+    "test:watch-failures": "jest --watch --verbose=false",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:test": "eslint tests/",
     "list-bots": "ls -la configs/*.json 2>/dev/null | grep -v example || echo 'No bot configurations found. Run: npm run setup'"
   },
   "keywords": [
@@ -29,7 +47,16 @@
     "node-telegram-bot-api": "^0.61.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "@eslint/js": "^9.32.0",
+    "@types/jest": "^30.0.0",
+    "eslint": "^9.32.0",
+    "eslint-plugin-jest": "^29.0.1",
+    "globals": "^16.3.0",
+    "jest": "^30.0.5",
+    "nodemon": "^3.0.1",
+    "sinon": "^21.0.0",
+    "supertest": "^7.1.4",
+    "telegram-test-api": "^4.2.1"
   },
   "engines": {
     "node": ">=14.0.0"

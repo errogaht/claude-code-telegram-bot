@@ -41,10 +41,15 @@ class KeyboardHandlers {
   async handleKeyboardButton(msg) {
     const text = msg.text;
     const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const username = msg.from.username || 'Unknown';
+    
+    console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
     
     switch (text) {
       case '🛑 STOP':
-        await this.mainBot.cancelUserSession(chatId);
+        console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
+        await this.mainBot.sessionManager.cancelUserSession(chatId);
         await this.mainBot.safeSendMessage(chatId, '🛑 *Emergency Stop*\n\nAll processes stopped.', {
           forceNotification: true,  // Critical user action
           reply_markup: this.createReplyKeyboard()
@@ -52,14 +57,17 @@ class KeyboardHandlers {
         return true;
         
       case '📊 Status':
+        console.log(`[COMPONENT] SessionManager.showSessionStatus - chatId: ${chatId}`);
         await this.mainBot.sessionManager.showSessionStatus(chatId);
         return true;
         
       case '📂 Projects':
+        console.log(`[COMPONENT] ProjectNavigator.showProjectSelection - chatId: ${chatId}`);
         await this.mainBot.projectNavigator.showProjectSelection(chatId);
         return true;
         
       case '🔄 New Session':
+        console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${chatId}`);
         await this.mainBot.sessionManager.startNewSession(chatId);
         await this.mainBot.safeSendMessage(chatId, '🔄 *New Session*\n\nOld session ended, new session started.', {
           forceNotification: true,  // Important session action
@@ -68,10 +76,12 @@ class KeyboardHandlers {
         return true;
         
       case '📝 Sessions':
+        console.log(`[COMPONENT] SessionManager.showSessionHistory - chatId: ${chatId}`);
         await this.mainBot.sessionManager.showSessionHistory(chatId);
         return true;
         
       case '📍 Path':
+        console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
         const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
         await this.bot.sendMessage(chatId, `📍 *Current Path:*\n\n\`${currentDir}\``, {
           parse_mode: 'Markdown',
@@ -80,14 +90,17 @@ class KeyboardHandlers {
         return true;
         
       case '🤖 Model':
+        console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
         await this.mainBot.showModelSelection(chatId);
         return true;
         
       case '🧠 Thinking':
+        console.log(`[COMPONENT] StreamTelegramBot.showThinkingModeSelection - chatId: ${chatId}`);
         await this.mainBot.showThinkingModeSelection(chatId);
         return true;
         
       case '🔍 Git Diff':
+        console.log(`[COMPONENT] GitDiffManager.showGitDiff - chatId: ${chatId}`);
         await this.mainBot.gitDiffManager.showGitDiff(chatId);
         return true;
         
