@@ -7,6 +7,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const TelegramFormatter = require('./telegram-formatter');
 const ActivityIndicator = require('./ActivityIndicator');
 const VoiceMessageHandler = require('./VoiceMessageHandler');
+const ImageHandler = require('./ImageHandler');
 const SessionManager = require('./SessionManager');
 const ProjectNavigator = require('./ProjectNavigator');
 const KeyboardHandlers = require('./KeyboardHandlers');
@@ -29,6 +30,9 @@ class StreamTelegramBot {
     // Store config file path for saving admin ID
     this.configFilePath = options.configFilePath;
     
+    // Store bot instance name for PM2 restart
+    this.botInstanceName = options.botInstanceName || 'bot1';
+    
     // Admin user management
     this.adminUserId = options.adminUserId ? parseInt(options.adminUserId) : null;
     this.authorizedUsers = new Set();
@@ -42,15 +46,18 @@ class StreamTelegramBot {
     // Initialize extracted modules
     this.activityIndicator = new ActivityIndicator(this.bot);
     this.sessionManager = new SessionManager(this.formatter, this.options, this.bot, this.activeProcessors, this.activityIndicator, this);
-    this.projectNavigator = new ProjectNavigator(this.bot, this.options);
+    this.projectNavigator = new ProjectNavigator(this.bot, this.options, this);
     this.keyboardHandlers = new KeyboardHandlers(this.bot, this);
     this.messageSplitter = new MessageSplitter();
     
     // Git manager - full git workflow handler
-    this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers);
+    this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers, this);
     
     // Voice message handler
-    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator);
+    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this);
+    
+    // Image message handler
+    this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator);
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -150,6 +157,27 @@ class StreamTelegramBot {
       }
     });
 
+    // Handle photo messages with captions
+    this.bot.on('photo', async (msg) => {
+      try {
+        const userId = msg.from.id;
+        const username = msg.from.username || 'Unknown';
+        const chatId = msg.chat.id;
+        
+        console.log(`[PHOTO_MESSAGE] User ${userId} (@${username}) sent photo in chat ${chatId}`);
+        
+        // Always check admin access first
+        if (!this.checkAdminAccess(msg.from.id, msg.chat.id)) {
+          return; // Access denied message already sent
+        }
+
+        await this.imageHandler.handlePhotoMessage(msg, this.processUserMessage.bind(this));
+      } catch (error) {
+        console.error('Error handling photo:', error);
+        await this.sessionManager.sendError(msg.chat.id, error);
+      }
+    });
+
     // Commands
     this.bot.onText(/\/start/, async (msg) => {
       const userId = msg.from.id;
@@ -169,7 +197,8 @@ class StreamTelegramBot {
         `• 🔄 Session continuity with session IDs\n` +
         `• 🛡️ Auto-skip permissions\n` +
         `• 🎯 Real-time tool execution\n` +
-        `• 🧠 Thinking mode control (like Claudia)\n\n` +
+        `• 🧠 Thinking mode control (like Claudia)\n` +
+        `• 📸 Image analysis support with captions\n\n` +
         `*Quick Buttons:*\n` +
         `• 🛑 STOP - emergency stop\n` +
         `• 📊 Status - session status\n` +
@@ -191,7 +220,7 @@ class StreamTelegramBot {
         `Just send me a message to start!`;
       
       await this.bot.sendMessage(msg.chat.id, welcomeText, { 
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
       });
     });
@@ -270,18 +299,18 @@ class StreamTelegramBot {
           if (errorMessage.includes('BUTTON_DATA_INVALID')) {
             await this.bot.sendMessage(chatId, 
               '❌ *Button data error*\n\nProject list expired. Use /cd to refresh.',
-              { parse_mode: 'Markdown' }
+              { parse_mode: 'HTML' }
             );
           } else {
             await this.bot.sendMessage(chatId, 
               `❌ *Telegram API Error*\n\n${error.message}`,
-              { parse_mode: 'Markdown' }
+              { parse_mode: 'HTML' }
             );
           }
         } else {
           await this.bot.sendMessage(chatId, 
             `❌ *Error*\n\n${error.message}`,
-            { parse_mode: 'Markdown' }
+            { parse_mode: 'HTML' }
           );
         }
         
@@ -414,11 +443,12 @@ class StreamTelegramBot {
     await this.processUserMessage(text, userId, chatId);
   }
 
+
   /**
    * Send session initialization message
    */
   async sendSessionInit(chatId, session) {
-    const text = `🚀 *New Session Started*\n\n` +
+    const text = `🚀 **New Session Started**\n\n` +
       `Ready to process your requests with Claude CLI stream-json mode.\n\n` +
       `🔄 Session continuity with ID tracking\n` +
       `🛡️ Auto-permissions enabled\n` +
@@ -426,7 +456,7 @@ class StreamTelegramBot {
       `💡 Use /end to close this session\n` +
       `📚 Use /sessions to view history`;
     
-    await this.safeSendMessage(chatId, text, { parse_mode: 'Markdown' });
+    await this.safeSendMessage(chatId, text, { parse_mode: 'HTML' });
   }
 
 
@@ -445,7 +475,7 @@ class StreamTelegramBot {
       `🔗 **Full Path:** \`${currentDir}\`\n\n` +
       `💡 Use /cd to change directory`,
       { 
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
       }
     );
@@ -515,7 +545,7 @@ class StreamTelegramBot {
       `💡 Select model for new sessions:`,
       {
         reply_markup: keyboard,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       }
     );
   }
@@ -574,7 +604,7 @@ class StreamTelegramBot {
       `💡 Select thinking mode for Claude:`,
       {
         reply_markup: keyboard,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML'
       }
     );
   }
@@ -698,113 +728,41 @@ class StreamTelegramBot {
    * Safely send message with proper Telegram markdown sanitization
    */
   async safeSendMessage(chatId, text, options = {}) {
-    const { TelegramSanitizer, TelegramSanitizerError } = require('./telegram-sanitizer.js');
-    
     try {
-      let messageOptions = { ...options };
-      let messageText = text;
+      let htmlText = text;
       
-      // Apply sanitization if using markdown
-      if (options.parse_mode === 'Markdown' || !options.parse_mode) {
-        const sanitizer = new TelegramSanitizer();
-        const sanitized = sanitizer.sanitizeForTelegram(text, options);
-        messageText = sanitized.text;
-        messageOptions.parse_mode = sanitized.parse_mode; // Will be MarkdownV2
+      // Convert markdown to HTML if text doesn't already contain HTML tags
+      const containsHtml = /<[^>]+>/.test(text);
+      if (!containsHtml) {
+        const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+        const converter = new MarkdownHtmlConverter();
+        htmlText = converter.convert(text);
       }
       
-      // Determine if message should have notification
+      const messageOptions = {
+        ...options,
+        parse_mode: 'HTML'  // ALWAYS HTML - no exceptions
+      };
+      
+      // Keep existing notification logic (don't break existing behavior)
       const shouldNotify = this.shouldSendWithNotification(text, options);
       if (!shouldNotify && !messageOptions.hasOwnProperty('disable_notification')) {
         messageOptions.disable_notification = true;
       }
       
-      // Check message length and split if necessary
-      const TELEGRAM_MAX_LENGTH = 4096;
-      if (messageText.length <= TELEGRAM_MAX_LENGTH) {
-        // Send single message
-        await this.bot.sendMessage(chatId, messageText, messageOptions);
+      // Use existing MessageSplitter (already HTML-aware!)
+      if (htmlText.length <= 4096) {
+        await this.bot.sendMessage(chatId, htmlText, messageOptions);
       } else {
-        // Split into multiple messages
-        await this.messageSplitter.sendLongMessage(this.bot, chatId, messageText, messageOptions);
+        await this.messageSplitter.sendLongMessage(this.bot, chatId, htmlText, messageOptions);
       }
       
     } catch (error) {
-      // Handle different types of errors with proper context
-      if (error instanceof TelegramSanitizerError) {
-        // Sanitizer error - log details and send error message
-        console.error('🚨 Telegram Sanitizer Error:', {
-          message: error.message,
-          details: error.details,
-          timestamp: error.timestamp
-        });
-        
-        await this.bot.sendMessage(chatId, 
-          `❌ Message Formatting Error\n\n` +
-          `Issue: ${error.message}\n` +
-          `Details: ${JSON.stringify(error.details, null, 2)}\n\n` +
-          `Original content was too complex to display safely.`,
-          { parse_mode: undefined, disable_notification: false }
-        );
-        
-      } else if (error.code === 'ETELEGRAM' && error.message.includes("can't parse entities")) {
-        // Telegram parsing error - provide clean error info
-        const errorInfo = {
-          error: 'Telegram Markdown Parsing Failed',
-          message: error.message,
-          textLength: text?.length || 0,
-          textPreview: text?.substring(0, 150) + '...' || 'N/A',
-          parseMode: options.parse_mode || 'Markdown',
-          timestamp: new Date().toISOString()
-        };
-        
-        console.error('🚨 Telegram Parse Error:', errorInfo);
-        console.error('🔍 FULL MESSAGE CONTENT FOR DEBUGGING:');
-        console.error('═'.repeat(80));
-        console.error(text);
-        console.error('═'.repeat(80));
-        
-        // Send clean error message without problematic formatting
-        await this.bot.sendMessage(chatId, 
-          `❌ Telegram Parse Error\n\n` +
-          `Message: ${errorInfo.message}\n` +
-          `Length: ${errorInfo.textLength} chars\n` +
-          `Preview: ${errorInfo.textPreview}\n` +
-          `Time: ${errorInfo.timestamp}\n\n` +
-          `The message contained formatting that Telegram couldn't parse.`,
-          { parse_mode: undefined, disable_notification: false }
-        );
-        
-      } else if (error.code === 'ETELEGRAM' && error.message.includes("message is too long")) {
-        // Message too long error - retry with splitting
-        console.error('🚨 Message Too Long Error - Retrying with splitting:', {
-          textLength: text?.length || 0,
-          timestamp: new Date().toISOString()
-        });
-        
-        try {
-          // Force split the message
-          await this.messageSplitter.sendLongMessage(this.bot, chatId, text, options);
-        } catch (splitError) {
-          // If splitting also fails, send basic error
-          await this.bot.sendMessage(chatId, 
-            `❌ *Message Too Long*\n\n` +
-            `The message (${text?.length || 0} chars) was too long for Telegram and couldn't be split properly.\n\n` +
-            `Try using a more specific request for shorter responses.`,
-            { parse_mode: undefined, disable_notification: false }
-          );
-        }
-        
-      } else {
-        // Other errors - re-throw with context
-        console.error('🚨 Unknown Send Message Error:', {
-          error: error.message,
-          code: error.code,
-          textLength: text?.length || 0,
-          options: options,
-          timestamp: new Date().toISOString()
-        });
-        throw error;
-      }
+      console.error('HTML message failed:', error);
+      // Fallback to plain text (no formatting)
+      await this.bot.sendMessage(chatId, 'Message formatting error occurred.', {
+        disable_notification: true
+      });
     }
   }
 
@@ -827,8 +785,9 @@ class StreamTelegramBot {
     // Note: We keep sessionStorage for session persistence
     console.log(`💾 Preserved session data for ${this.sessionManager.sessionStorage.size} users`);
     
-    // Clear voice handler and project cache
+    // Clear voice handler, image handler, and project cache
     this.voiceHandler.cleanup();
+    this.imageHandler.cleanup();
     this.projectNavigator.cleanup();
     
     // Stop polling
@@ -873,7 +832,7 @@ class StreamTelegramBot {
         {
           chat_id: chatId,
           message_id: messageId,
-          parse_mode: 'Markdown'
+          parse_mode: 'HTML'
         }
       );
     }
@@ -908,7 +867,7 @@ class StreamTelegramBot {
         {
           chat_id: chatId,
           message_id: messageId,
-          parse_mode: 'Markdown'
+          parse_mode: 'HTML'
         }
       );
     }
@@ -1105,7 +1064,7 @@ class StreamTelegramBot {
         '🚫 *Access Denied*\n\n' +
         'This bot is private and only available to authorized users.\n\n' +
         '👤 Your User ID: `' + userId + '`',
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       ).catch(error => {
         console.error('Error sending unauthorized message:', error);
       });
@@ -1123,10 +1082,10 @@ class StreamTelegramBot {
       
       // Send restart confirmation message
       await this.bot.sendMessage(chatId, 
-        '🔄 *Bot Restart Initiated*\n\n' +
-        '⏳ Restarting bot1 process...\n' +
+        '🔄 **Bot Restart Initiated**\n\n' +
+        `⏳ Restarting ${this.botInstanceName} process...\n` +
         '🚀 Bot will be back online shortly!',
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       );
       
       // Use PM2 to restart the bot
@@ -1135,23 +1094,23 @@ class StreamTelegramBot {
       const execAsync = promisify(exec);
       
       // Execute PM2 restart command
-      const result = await execAsync('pm2 restart bot1');
+      const result = await execAsync(`pm2 restart ${this.botInstanceName}`);
       console.log(`[Admin] PM2 restart output: ${result.stdout}`);
       
       // The process will be killed by PM2, so this message might not send
       await this.bot.sendMessage(chatId, 
-        '✅ *Restart Command Sent*\n\n' +
+        '✅ **Restart Command Sent**\n\n' +
         '🔄 PM2 is restarting the bot process...',
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       );
       
     } catch (error) {
       console.error('[Admin] Error restarting bot:', error);
       await this.bot.sendMessage(chatId, 
-        '❌ *Restart Failed*\n\n' +
+        '❌ **Restart Failed**\n\n' +
         `Error: \`${error.message}\`\n\n` +
-        '💡 Try using `pm2 restart bot1` manually.',
-        { parse_mode: 'Markdown' }
+        `💡 Try using \`pm2 restart ${this.botInstanceName}\` manually.`,
+        { parse_mode: 'HTML' }
       );
     }
   }
@@ -1193,7 +1152,7 @@ class StreamTelegramBot {
     if (session.processor.isActive()) {
       console.log(`[ProcessUserMessage] Previous request still processing for user ${userId}`);
       await this.bot.sendMessage(chatId, '⏳ *Processing previous request...*\nPlease wait or use /cancel', 
-        { parse_mode: 'Markdown' });
+        { parse_mode: 'HTML' });
       return;
     }
 
@@ -1234,6 +1193,7 @@ class StreamTelegramBot {
       await this.sessionManager.sendError(chatId, error);
     }
   }
+
 
   /**
    * Setup process cleanup for activity indicators

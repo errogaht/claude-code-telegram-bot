@@ -56,7 +56,7 @@ class MessageSplitter {
         // If this part fails, try to send error info
         try {
           await bot.sendMessage(chatId, 
-            `❌ *Message Part Error*\n\nFailed to send part ${i + 1} of ${chunks.length}.\nLength: ${chunk.length} chars`,
+            `❌ **Message Part Error**\n\nFailed to send part ${i + 1} of ${chunks.length}.\nLength: ${chunk.length} chars`,
             { parse_mode: undefined }
           );
         } catch (errorSendingError) {

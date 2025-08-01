@@ -6,12 +6,14 @@ const FormData = require('form-data');
  * Handles voice transcription and processing with Nexara API
  */
 class VoiceMessageHandler {
-  constructor(bot, nexaraApiKey, activityIndicator) {
+  constructor(bot, nexaraApiKey, activityIndicator, mainBot) {
     this.bot = bot;
     this.nexaraApiKey = nexaraApiKey;
     this.activityIndicator = activityIndicator;
+    this.mainBot = mainBot; // Reference to main bot for delegation
     this.pendingCommands = new Map(); // messageId -> { transcribedText, userId, chatId }
   }
+
 
   /**
    * Handle voice messages with Nexara API
@@ -56,13 +58,13 @@ class VoiceMessageHandler {
         ]
       };
       
-      const confirmMsg = await this.bot.sendMessage(chatId,
+      const confirmMsg = await this.mainBot.safeSendMessage(chatId,
         `🎤 *Voice Message Received*\n\n` +
         `📝 **Text:** "${transcribedText}"\n\n` +
         `${isTestMode ? '🧪 **Test Mode:** Simulated transcription\n\n' : ''}` +
         `❓ Execute this command?`,
         {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           reply_markup: keyboard
         }
       );
@@ -82,11 +84,11 @@ class VoiceMessageHandler {
       
       // Send error message to user
       try {
-        await this.bot.sendMessage(chatId,
+        await this.mainBot.safeSendMessage(chatId,
           `❌ *Voice Message Error*\n\n` +
           `Sorry, I couldn't process your voice message.\n\n` +
           `Error: ${error.message}`,
-          { parse_mode: 'Markdown' }
+          { parse_mode: 'HTML' }
         );
       } catch (sendError) {
         console.error('[Voice] Failed to send error message:', sendError);
@@ -107,7 +109,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
       } catch (error) {
@@ -128,7 +130,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         
@@ -144,7 +146,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         
@@ -158,7 +160,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         

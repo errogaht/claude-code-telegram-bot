@@ -8,6 +8,7 @@ class KeyboardHandlers {
     this.mainBot = mainBotInstance; // Reference to main bot for delegation
   }
 
+
   /**
    * Create persistent reply keyboard with useful buttons
    */
@@ -53,7 +54,7 @@ class KeyboardHandlers {
       case '🛑 STOP':
         console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
         await this.mainBot.sessionManager.cancelUserSession(chatId);
-        await this.mainBot.safeSendMessage(chatId, '🛑 *Emergency Stop*\n\nAll processes stopped.', {
+        await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
           forceNotification: true,  // Critical user action
           reply_markup: this.createReplyKeyboard()
         });
@@ -72,7 +73,7 @@ class KeyboardHandlers {
       case '🔄 New Session':
         console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${chatId}`);
         await this.mainBot.sessionManager.startNewSession(chatId);
-        await this.mainBot.safeSendMessage(chatId, '🔄 *New Session*\n\nOld session ended, new session started.', {
+        await this.mainBot.safeSendMessage(chatId, '🔄 **New Session**\n\nOld session ended, new session started.', {
           forceNotification: true,  // Important session action
           reply_markup: this.createReplyKeyboard()
         });
@@ -86,8 +87,8 @@ class KeyboardHandlers {
       case '📍 Path':
         console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
         const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
-        await this.bot.sendMessage(chatId, `📍 *Current Path:*\n\n\`${currentDir}\``, {
-          parse_mode: 'Markdown',
+        await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
+          parse_mode: 'HTML',
           reply_markup: this.createReplyKeyboard()
         });
         return true;
@@ -112,7 +113,7 @@ class KeyboardHandlers {
         // Check if user is admin
         if (!this.mainBot.authorizedUsers.has(userId)) {
           await this.mainBot.safeSendMessage(chatId, 
-            '❌ *Access Denied*\n\n' +
+            '❌ **Access Denied**\n\n' +
             'Only administrators can restart the bot.\n' +
             '👤 This action requires admin privileges.',
             {

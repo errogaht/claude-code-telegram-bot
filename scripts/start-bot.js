@@ -94,7 +94,8 @@ try {
     model: config.defaultModel || 'sonnet',
     nexaraApiKey: config.nexaraApiKey,
     adminUserId: config.adminUserId,
-    configFilePath: configFilePath  // Pass config file path for saving admin ID
+    configFilePath: configFilePath,  // Pass config file path for saving admin ID
+    botInstanceName: botName  // Pass the bot instance name (bot1, bot2, etc.)
   });
   
   console.log('✅ Bot instance created successfully');
