@@ -28,6 +28,9 @@ class KeyboardHandlers {
           { text: '🧠 Thinking' },
           { text: '📍 Path' },
           { text: '📁 Git' }
+        ],
+        [
+          { text: '🔄 Restart Bot' }
         ]
       ],
       resize_keyboard: true,
@@ -102,6 +105,24 @@ class KeyboardHandlers {
       case '📁 Git':
         console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${chatId}`);
         await this.mainBot.gitManager.showGitOverview(chatId);
+        return true;
+        
+      case '🔄 Restart Bot':
+        console.log(`[COMPONENT] StreamTelegramBot.restartBot - userId: ${userId}, chatId: ${chatId}`);
+        // Check if user is admin
+        if (!this.mainBot.authorizedUsers.has(userId)) {
+          await this.mainBot.safeSendMessage(chatId, 
+            '❌ *Access Denied*\n\n' +
+            'Only administrators can restart the bot.\n' +
+            '👤 This action requires admin privileges.',
+            {
+              forceNotification: true,
+              reply_markup: this.createReplyKeyboard()
+            }
+          );
+        } else {
+          await this.mainBot.restartBot(chatId, userId);
+        }
         return true;
         
       default:
