@@ -1,5 +1,6 @@
 const axios = require('axios');
 const FormData = require('form-data');
+const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
 
 /**
  * Voice Message Handler - Extracted from StreamTelegramBot
@@ -11,6 +12,24 @@ class VoiceMessageHandler {
     this.nexaraApiKey = nexaraApiKey;
     this.activityIndicator = activityIndicator;
     this.pendingCommands = new Map(); // messageId -> { transcribedText, userId, chatId }
+    this.htmlConverter = new MarkdownHtmlConverter();
+  }
+
+  /**
+   * Safe send message with HTML conversion
+   */
+  async safeSendMessage(chatId, text, options = {}) {
+    try {
+      const htmlText = this.htmlConverter.convert(text);
+      const messageOptions = {
+        ...options,
+        parse_mode: 'HTML'
+      };
+      await this.safeSendMessage(chatId, htmlText, messageOptions);
+    } catch (error) {
+      console.error('HTML message failed:', error);
+      await this.safeSendMessage(chatId, 'Message formatting error occurred.');
+    }
   }
 
   /**
@@ -56,13 +75,13 @@ class VoiceMessageHandler {
         ]
       };
       
-      const confirmMsg = await this.bot.sendMessage(chatId,
+      const confirmMsg = await this.safeSendMessage(chatId,
         `🎤 *Voice Message Received*\n\n` +
         `📝 **Text:** "${transcribedText}"\n\n` +
         `${isTestMode ? '🧪 **Test Mode:** Simulated transcription\n\n' : ''}` +
         `❓ Execute this command?`,
         {
-          parse_mode: 'Markdown',
+          parse_mode: 'HTML',
           reply_markup: keyboard
         }
       );
@@ -82,11 +101,11 @@ class VoiceMessageHandler {
       
       // Send error message to user
       try {
-        await this.bot.sendMessage(chatId,
+        await this.safeSendMessage(chatId,
           `❌ *Voice Message Error*\n\n` +
           `Sorry, I couldn't process your voice message.\n\n` +
           `Error: ${error.message}`,
-          { parse_mode: 'Markdown' }
+          { parse_mode: 'HTML' }
         );
       } catch (sendError) {
         console.error('[Voice] Failed to send error message:', sendError);
@@ -107,7 +126,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
       } catch (error) {
@@ -128,7 +147,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         
@@ -144,7 +163,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         
@@ -158,7 +177,7 @@ class VoiceMessageHandler {
           {
             chat_id: chatId,
             message_id: messageId,
-            parse_mode: 'Markdown'
+            parse_mode: 'HTML'
           }
         );
         

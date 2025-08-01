@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
 
 /**
  * Project Navigator - Extracted from StreamTelegramBot  
@@ -12,6 +13,24 @@ class ProjectNavigator {
     this.options = options;
     this.projectCache = new Map(); // shortId -> fullPath
     this.projectCacheCounter = 0;
+    this.htmlConverter = new MarkdownHtmlConverter();
+  }
+
+  /**
+   * Safe send message with HTML conversion
+   */
+  async safeSendMessage(chatId, text, options = {}) {
+    try {
+      const htmlText = this.htmlConverter.convert(text);
+      const messageOptions = {
+        ...options,
+        parse_mode: 'HTML'
+      };
+      await this.bot.sendMessage(chatId, htmlText, messageOptions);
+    } catch (error) {
+      console.error('HTML message failed:', error);
+      await this.bot.sendMessage(chatId, 'Message formatting error occurred.');
+    }
   }
 
   /**
@@ -58,11 +77,11 @@ class ProjectNavigator {
     const projects = this.getClaudeProjects();
     
     if (projects.length === 0) {
-      await this.bot.sendMessage(chatId, 
-        `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
+      await this.safeSendMessage(chatId, 
+        `📁 **Current Directory**\n${this.options.workingDirectory}\n\n` +
         `❌ No Claude projects found\n` +
         `💡 Open projects in Claude Code first`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       );
       return;
     }
@@ -95,11 +114,11 @@ class ProjectNavigator {
     
     const keyboard = { inline_keyboard: buttons };
     
-    await this.bot.sendMessage(chatId, 
+    await this.safeSendMessage(chatId, 
       `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
-      `📋 *Select Claude Project:*\n` +
+      `📋 **Select Claude Project:**\n` +
       `(Showing ${Math.min(projects.length, 15)} projects)`,
-      { reply_markup: keyboard, parse_mode: 'Markdown' }
+      { reply_markup: keyboard, parse_mode: 'HTML' }
     );
   }
 
@@ -125,7 +144,7 @@ class ProjectNavigator {
             message_id: messageId 
           });
         } else {
-          await this.bot.sendMessage(chatId, errorMsg);
+          await this.safeSendMessage(chatId, errorMsg);
         }
         return;
       }
@@ -140,7 +159,7 @@ class ProjectNavigator {
             message_id: messageId 
           });
         } else {
-          await this.bot.sendMessage(chatId, errorMsg);
+          await this.safeSendMessage(chatId, errorMsg);
         }
         return;
       }
@@ -149,7 +168,7 @@ class ProjectNavigator {
       this.options.workingDirectory = actualPath;
       
       const successMsg = 
-        `✅ *Directory Changed*\n\n` +
+        `✅ **Directory Changed**\n\n` +
         `📁 **New Directory:**\n\`${actualPath}\`\n\n` +
         `💡 New sessions will use this directory\n` +
         `🔄 Use /new to start fresh session here`;
@@ -158,10 +177,10 @@ class ProjectNavigator {
         await this.bot.editMessageText(successMsg, { 
           chat_id: chatId, 
           message_id: messageId,
-          parse_mode: 'Markdown'
+          parse_mode: 'HTML'
         });
       } else {
-        await this.safeSendMessage(chatId, successMsg, { parse_mode: 'Markdown' });
+        await this.safeSendMessage(chatId, successMsg, { parse_mode: 'HTML' });
       }
       
       console.log(`[ProjectNavigator] Directory changed to: ${actualPath}`);
@@ -174,22 +193,11 @@ class ProjectNavigator {
           message_id: messageId 
         });
       } else {
-        await this.bot.sendMessage(chatId, errorMsg);
+        await this.safeSendMessage(chatId, errorMsg);
       }
     }
   }
 
-  /**
-   * Safe send message wrapper
-   */
-  async safeSendMessage(chatId, text, options = {}) {
-    try {
-      return await this.bot.sendMessage(chatId, text, options);
-    } catch (error) {
-      console.error(`[ProjectNavigator] Failed to send message to ${chatId}:`, error.message);
-      throw error;
-    }
-  }
 
   /**
    * Handle setdir callback routing
