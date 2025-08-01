@@ -265,8 +265,8 @@ class GitManager {
     
     // Build status summary
     let text = '🌿 *Git Repository Manager*\n\n';
-    text += `📁 **Directory:** ${path.basename(this.options.workingDirectory)}\n`;
-    text += `🌿 **Branch:** ${currentBranch}`;
+    text += `📁 *Directory:* ${path.basename(this.options.workingDirectory)}\n`;
+    text += `🌿 *Branch:* ${currentBranch}`;
     
     // Add ahead/behind indicators
     if (aheadBehind.ahead > 0 || aheadBehind.behind > 0) {
@@ -282,15 +282,15 @@ class GitManager {
     const totalStaged = stagedFiles.length;
     const totalUntracked = untrackedFiles.length;
     
-    text += `📋 **Files changed:** ${totalChanged} | `;
-    text += `✅ **Staged:** ${totalStaged} | `;
-    text += `❓ **Untracked:** ${totalUntracked}\n\n`;
+    text += `📋 *Files changed:* ${totalChanged} | `;
+    text += `✅ *Staged:* ${totalStaged} | `;
+    text += `❓ *Untracked:* ${totalUntracked}\n\n`;
 
     if (!gitStatus.hasChanges) {
       text += '✅ Working directory is clean\n\n';
     }
 
-    text += '💡 **Choose action:**';
+    text += '💡 *Choose action:*';
 
     // Create comprehensive action keyboard
     const keyboard = {
@@ -422,8 +422,8 @@ class GitManager {
       }
 
       let text = '🌿 *Switch Branch*\n\n';
-      text += `**Current:** ${branchInfo.currentBranch}\n\n`;
-      text += '**Available Branches:**\n';
+      text += `*Current:* ${branchInfo.currentBranch}\n\n`;
+      text += '*Available Branches:*\n';
 
       const keyboard = {
         inline_keyboard: []
@@ -495,7 +495,7 @@ class GitManager {
         await this.bot.sendMessage(chatId, 
           '⚠️ *Uncommitted Changes Detected*\n\n' +
           'You have uncommitted changes that would be lost.\n\n' +
-          '💡 **Options:**\n' +
+          '💡 *Options:*\n' +
           '• Commit your changes first\n' +
           '• Stash your changes (coming soon)\n' +
           '• Force switch (will lose changes)',
@@ -565,8 +565,8 @@ class GitManager {
 
         await this.bot.sendMessage(chatId, 
           `✅ *Branch Switch Successful*\n\n` +
-          `**Switched to:** \`${branchName}\`\n\n` +
-          '💡 **Next steps:**\n' +
+          `*Switched to:* \`${branchName}\`\n\n` +
+          '💡 *Next steps:*\n' +
           '• View file changes\n' +
           '• Check branch status\n' +
           '• Return to git overview',
@@ -593,8 +593,8 @@ class GitManager {
       console.error('[Perform Branch Switch] Error:', error);
       await this.bot.sendMessage(chatId, 
         `❌ *Branch Switch Failed*\n\n` +
-        `**Target Branch:** \`${branchName}\`\n` +
-        `**Error:** \`${error.message}\`\n\n` +
+        `*Target Branch:* \`${branchName}\`\n` +
+        `*Error:* \`${error.message}\`\n\n` +
         '💡 This might happen if:\n' +
         '• The branch doesn\'t exist\n' +
         '• There are conflicting changes\n' +
@@ -619,7 +619,7 @@ class GitManager {
       const branchInfo = await this.getBranchInfo();
       
       let text = '🌿 *Branch Management*\n\n';
-      text += `**Current:** ${branchInfo.currentBranch}*`;
+      text += `*Current:* ${branchInfo.currentBranch}*`;
       
       // Add ahead/behind info for current branch
       if (branchInfo.currentBranchInfo) {
@@ -635,7 +635,7 @@ class GitManager {
       
       // List all branches
       if (branchInfo.branches.length > 0) {
-        text += '📋 **Available Branches:**\n';
+        text += '📋 *Available Branches:*\n';
         branchInfo.branches.forEach(branch => {
           const icon = branch.current ? '🌿' : '🌿';
           const marker = branch.current ? '*' : '';
@@ -652,10 +652,10 @@ class GitManager {
           text += branchLine + '\n';
         });
       } else {
-        text += '📋 **Available Branches:** Only current branch found\n';
+        text += '📋 *Available Branches:* Only current branch found\n';
       }
       
-      text += '\n💡 **Actions:**';
+      text += '\n💡 *Actions:*';
       
       // Create branch management keyboard
       const keyboard = {
@@ -1369,7 +1369,7 @@ class GitManager {
     await this.bot.sendMessage(chatId, 
       '🆕 *Create New Branch*\n\n' +
       'Branch creation features coming in Phase 2.2!\n\n' +
-      '💡 **Planned features:**\n' +
+      '💡 *Planned features:*\n' +
       '• Enter branch name via text input\n' +
       '• Validate branch name format\n' +
       '• Create and switch to new branch\n' +

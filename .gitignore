@@ -65,7 +65,6 @@ activity-test.js
 # Suspicious/unused files (should be cleaned up)
 package-new.json
 package-stream.json
-CLAUDE.md
 /claude-response-chunks-output.json
 /tests/real-bot/test-config-*.json
 .claude-flow

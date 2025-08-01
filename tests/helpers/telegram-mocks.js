@@ -337,6 +337,18 @@ function createTelegramError(type = 'generic') {
         }
       }
     },
+    markdownParsingError: {
+      message: 'ETELEGRAM: 400 Bad Request: can\'t parse entities: Can\'t find end of the entity starting at byte offset 100',
+      code: 'ETELEGRAM',
+      response: {
+        status: 400,
+        body: {
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: can't parse entities: Can't find end of the entity starting at byte offset 100"
+        }
+      }
+    },
     notFound: {
       message: 'Not Found',
       code: 404,

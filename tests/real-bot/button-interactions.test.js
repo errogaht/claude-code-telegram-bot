@@ -196,8 +196,8 @@ describe('Real Bot Integration - Button Interactions', () => {
       console.log('✅ Thinking button handled correctly');
     });
 
-    it('should handle Git Diff button press', async () => {
-      const response = await testHelper.sendMessageAndWaitForResponse('🔍 Git Diff');
+    it('should handle Git button press', async () => {
+      const response = await testHelper.sendMessageAndWaitForResponse('📁 Git');
       
       expect(response).toBeDefined();
       expect(response.message).toBeDefined();
@@ -213,7 +213,7 @@ describe('Real Bot Integration - Button Interactions', () => {
         responseText.includes('no') // No changes/repo
       ).toBe(true);
       
-      console.log('✅ Git Diff button handled correctly');
+      console.log('✅ Git button handled correctly');
     });
   });
 
