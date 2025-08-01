@@ -265,8 +265,8 @@ class GitManager {
     
     // Build status summary
     let text = '🌿 *Git Repository Manager*\n\n';
-    text += `📁 *Directory:* ${path.basename(this.options.workingDirectory)}\n`;
-    text += `🌿 *Branch:* ${currentBranch}`;
+    text += `📁 *Directory:* ${this.escapeMarkdown(path.basename(this.options.workingDirectory))}\n`;
+    text += `🌿 *Branch:* ${this.escapeMarkdown(currentBranch)}`;
     
     // Add ahead/behind indicators
     if (aheadBehind.ahead > 0 || aheadBehind.behind > 0) {
@@ -284,7 +284,7 @@ class GitManager {
     
     text += `📋 *Files changed:* ${totalChanged} | `;
     text += `✅ *Staged:* ${totalStaged} | `;
-    text += `❓ *Untracked:* ${totalUntracked}\n\n`;
+    text += `🔍 *Untracked:* ${totalUntracked}\n\n`;
 
     if (!gitStatus.hasChanges) {
       text += '✅ Working directory is clean\n\n';
@@ -314,8 +314,13 @@ class GitManager {
       ]
     };
 
-    await this.bot.sendMessage(chatId, text, {
-      parse_mode: 'Markdown',
+    // Convert Markdown to HTML for more reliable parsing
+    const htmlText = text
+      .replace(/\*([^*]+)\*/g, '<b>$1</b>')  // Convert *text* to <b>text</b>
+      .replace(/`([^`]+)`/g, '<code>$1</code>'); // Convert `text` to <code>text</code>
+    
+    await this.bot.sendMessage(chatId, htmlText, {
+      parse_mode: 'HTML',
       reply_markup: keyboard
     });
   }
@@ -619,7 +624,7 @@ class GitManager {
       const branchInfo = await this.getBranchInfo();
       
       let text = '🌿 *Branch Management*\n\n';
-      text += `*Current:* ${branchInfo.currentBranch}*`;
+      text += `*Current:* ${branchInfo.currentBranch}`;
       
       // Add ahead/behind info for current branch
       if (branchInfo.currentBranchInfo) {

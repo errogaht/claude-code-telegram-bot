@@ -52,6 +52,11 @@ pm2 restart all
 pm2 status
 ```
 
+**🤖 Bot Self-Restart (Admin Only):**
+- Admin users can restart bot1 directly via Telegram: `/restart`
+- Bot will send confirmation and restart itself using PM2
+- **IMPORTANT:** Always test code changes by restarting after making changes
+
 ### PM2 Management Commands
 ```bash
 # Process status
@@ -114,4 +119,16 @@ After significant implementation, check if CLAUDE.md needs updates:
 - Temporary session-specific information
 - Step-by-step tutorials or detailed explanations
 
-**Code Changes:** Use PM2 restart workflow above. Always prefer editing existing files over creating new ones.
+**Code Changes Workflow:**
+1. Make code changes (always prefer editing existing files over creating new ones)
+2. **MUST RESTART:** Use PM2 restart workflow above or `/restart` command via Telegram
+3. **MUST TEST:** Verify changes work correctly after restart
+4. Check logs if issues occur: `pm2 logs bot1`
+
+**⚠️ CRITICAL:** Bot changes only take effect after restart - always restart and test!
+
+**🤖 IMPORTANT FOR CLAUDE:** When you make changes to bot code, you MUST restart the bot yourself using bash commands so the user can test the new functionality:
+```bash
+pm2 restart bot1
+```
+**Never forget this step!** The user cannot test new features until the bot is restarted.

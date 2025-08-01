@@ -382,6 +382,21 @@ class StreamTelegramBot {
       console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${msg.chat.id}`);
       await this.gitManager.showGitOverview(msg.chat.id);
     });
+
+    // Bot restart command (admin only)
+    this.bot.onText(/\/restart/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /restart in chat ${msg.chat.id}`);
+      
+      // Check if user is admin
+      if (!this.authorizedUsers.has(userId)) {
+        await this.bot.sendMessage(msg.chat.id, '❌ Access denied. Only administrators can restart the bot.');
+        return;
+      }
+      
+      await this.restartBot(msg.chat.id, userId);
+    });
   }
 
 
@@ -1097,6 +1112,48 @@ class StreamTelegramBot {
     });
     
     return false;
+  }
+
+  /**
+   * Restart the bot (admin only)
+   */
+  async restartBot(chatId, userId) {
+    try {
+      console.log(`[Admin] User ${userId} initiated bot restart`);
+      
+      // Send restart confirmation message
+      await this.bot.sendMessage(chatId, 
+        '🔄 *Bot Restart Initiated*\n\n' +
+        '⏳ Restarting bot1 process...\n' +
+        '🚀 Bot will be back online shortly!',
+        { parse_mode: 'Markdown' }
+      );
+      
+      // Use PM2 to restart the bot
+      const { exec } = require('child_process');
+      const { promisify } = require('util');
+      const execAsync = promisify(exec);
+      
+      // Execute PM2 restart command
+      const result = await execAsync('pm2 restart bot1');
+      console.log(`[Admin] PM2 restart output: ${result.stdout}`);
+      
+      // The process will be killed by PM2, so this message might not send
+      await this.bot.sendMessage(chatId, 
+        '✅ *Restart Command Sent*\n\n' +
+        '🔄 PM2 is restarting the bot process...',
+        { parse_mode: 'Markdown' }
+      );
+      
+    } catch (error) {
+      console.error('[Admin] Error restarting bot:', error);
+      await this.bot.sendMessage(chatId, 
+        '❌ *Restart Failed*\n\n' +
+        `Error: \`${error.message}\`\n\n` +
+        '💡 Try using `pm2 restart bot1` manually.',
+        { parse_mode: 'Markdown' }
+      );
+    }
   }
 
   /**
