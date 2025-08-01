@@ -69,3 +69,6 @@ CLAUDE.md
 /claude-response-chunks-output.json
 /tests/real-bot/test-config-*.json
 .claude-flow
+/IDEAS.txt
+/tests/real-bot/test-config-*.json
+.claude-flow
