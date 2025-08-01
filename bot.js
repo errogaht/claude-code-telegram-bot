@@ -10,7 +10,7 @@ const VoiceMessageHandler = require('./VoiceMessageHandler');
 const SessionManager = require('./SessionManager');
 const ProjectNavigator = require('./ProjectNavigator');
 const KeyboardHandlers = require('./KeyboardHandlers');
-const GitDiffManager = require('./GitDiffManager');
+const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
 const path = require('path');
 
@@ -46,8 +46,8 @@ class StreamTelegramBot {
     this.keyboardHandlers = new KeyboardHandlers(this.bot, this);
     this.messageSplitter = new MessageSplitter();
     
-    // Git diff handler
-    this.gitDiffManager = new GitDiffManager(this.bot, this.options, this.keyboardHandlers);
+    // Git manager - full git workflow handler
+    this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers);
     
     // Voice message handler
     this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator);
@@ -242,9 +242,9 @@ class StreamTelegramBot {
         } else if (data.startsWith('thinking:')) {
           console.log(`[COMPONENT] StreamTelegramBot.handleThinkingModeCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.handleThinkingModeCallback(data, chatId, messageId, query.from.id);
-        } else if (data.startsWith('diff:')) {
-          console.log(`[COMPONENT] GitDiffManager.handleDiffCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
-          await this.gitDiffManager.handleDiffCallback(data, chatId, messageId, query.from.id);
+        } else if (data.startsWith('diff:') || data.startsWith('git:')) {
+          console.log(`[COMPONENT] GitManager.handleGitCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          await this.gitManager.handleGitCallback(data, chatId, messageId, query.from.id);
         } else if (data.startsWith('session_page:')) {
           const page = parseInt(data.replace('session_page:', ''));
           console.log(`[COMPONENT] SessionManager.handleSessionPageCallback - page: ${page}, chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
@@ -379,8 +379,8 @@ class StreamTelegramBot {
       const userId = msg.from.id;
       const username = msg.from.username || 'Unknown';
       console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /diff in chat ${msg.chat.id}`);
-      console.log(`[COMPONENT] GitDiffManager.showGitDiff - chatId: ${msg.chat.id}`);
-      await this.gitDiffManager.showGitDiff(msg.chat.id);
+      console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${msg.chat.id}`);
+      await this.gitManager.showGitOverview(msg.chat.id);
     });
   }
 
