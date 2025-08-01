@@ -25,8 +25,8 @@ const createMockMainBot = () => ({
   },
   showModelSelection: jest.fn().mockResolvedValue(),
   showThinkingModeSelection: jest.fn().mockResolvedValue(),
-  gitDiffManager: {
-    showGitDiff: jest.fn().mockResolvedValue()
+  gitManager: {
+    showGitOverview: jest.fn().mockResolvedValue()
   }
 });
 
@@ -75,7 +75,7 @@ describe('KeyboardHandlers', () => {
           [
             { text: '🧠 Thinking' },
             { text: '📍 Path' },
-            { text: '🔍 Git Diff' }
+            { text: '📁 Git' }
           ]
         ],
         resize_keyboard: true,
@@ -194,13 +194,13 @@ describe('KeyboardHandlers', () => {
       expect(mockMainBot.showThinkingModeSelection).toHaveBeenCalledWith(123);
     });
 
-    test('should handle Git Diff button', async () => {
-      const msg = createMockMessage('🔍 Git Diff');
+    test('should handle Git button', async () => {
+      const msg = createMockMessage('📁 Git');
 
       const result = await keyboardHandlers.handleKeyboardButton(msg);
 
       expect(result).toBe(true);
-      expect(mockMainBot.gitDiffManager.showGitDiff).toHaveBeenCalledWith(123);
+      expect(mockMainBot.gitManager.showGitOverview).toHaveBeenCalledWith(123);
     });
 
     test('should return false for unknown button', async () => {

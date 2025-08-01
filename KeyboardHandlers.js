@@ -27,7 +27,7 @@ class KeyboardHandlers {
         [
           { text: '🧠 Thinking' },
           { text: '📍 Path' },
-          { text: '🔍 Git Diff' }
+          { text: '📁 Git' }
         ]
       ],
       resize_keyboard: true,
@@ -99,9 +99,9 @@ class KeyboardHandlers {
         await this.mainBot.showThinkingModeSelection(chatId);
         return true;
         
-      case '🔍 Git Diff':
-        console.log(`[COMPONENT] GitDiffManager.showGitDiff - chatId: ${chatId}`);
-        await this.mainBot.gitDiffManager.showGitDiff(chatId);
+      case '📁 Git':
+        console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${chatId}`);
+        await this.mainBot.gitManager.showGitOverview(chatId);
         return true;
         
       default:
