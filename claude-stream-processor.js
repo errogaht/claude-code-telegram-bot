@@ -130,7 +130,20 @@ class ClaudeStreamProcessor extends EventEmitter {
       this.isProcessing = true;
       this.messageBuffer = '';
       
+      console.log('[ClaudeStream] Working directory:', this.options.workingDirectory);
       console.log('[ClaudeStream] Spawning Claude with args:', args);
+      
+      // Build copyable command line
+      const quotedArgs = args.map(arg => {
+        // Quote arguments that contain spaces or special characters
+        if (arg.includes(' ') || arg.includes('"') || arg.includes("'")) {
+          return `"${arg.replace(/"/g, '\\"')}"`;
+        }
+        return arg;
+      });
+      const copyableCommand = `claude ${quotedArgs.join(' ')}`;
+      console.log('[ClaudeStream] Copyable command:', copyableCommand);
+      
       console.log('[ClaudeStream] Environment check: NODE_ENV =', process.env.NODE_ENV, ', JEST_WORKER_ID =', process.env.JEST_WORKER_ID);
       
       // BULLETPROOF TEST PROTECTION: Check if we're in test environment
