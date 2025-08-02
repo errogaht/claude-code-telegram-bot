@@ -404,7 +404,7 @@ describe('Real Bot Integration - Button Interactions', () => {
         ' 📊 Status ', // Extra spaces
         '📊Status', // No space
         '🔄New Session', // No space
-        'STOP', // No emoji
+        'STOP' // No emoji
       ];
 
       for (const buttonText of almostButtons) {

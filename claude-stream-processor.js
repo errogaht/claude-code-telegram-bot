@@ -408,87 +408,87 @@ class ClaudeStreamProcessor extends EventEmitter {
     const { name: toolName, input, id: toolId } = toolCall;
     
     switch (toolName.toLowerCase()) {
-      case 'todowrite':
-        this.emit('todo-write', {
-          todos: input.todos,
+    case 'todowrite':
+      this.emit('todo-write', {
+        todos: input.todos,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'todoread':
+      this.emit('todo-read', {
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'edit':
+      this.emit('file-edit', {
+        filePath: input.file_path,
+        oldString: input.old_string,
+        newString: input.new_string,
+        replaceAll: input.replace_all,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'write':
+      this.emit('file-write', {
+        filePath: input.file_path,
+        content: input.content,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'read':
+      this.emit('file-read', {
+        filePath: input.file_path,
+        offset: input.offset,
+        limit: input.limit,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'bash':
+      this.emit('bash-command', {
+        command: input.command,
+        description: input.description,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    case 'task':
+      this.emit('task-spawn', {
+        description: input.description,
+        prompt: input.prompt,
+        subagentType: input.subagent_type,
+        toolId,
+        sessionId
+      });
+      break;
+        
+    default:
+      // MCP tools or unknown tools
+      if (toolName.startsWith('mcp__')) {
+        this.emit('mcp-tool', {
+          toolName,
+          input,
           toolId,
           sessionId
         });
-        break;
-        
-      case 'todoread':
-        this.emit('todo-read', {
+      } else {
+        this.emit('unknown-tool', {
+          toolName,
+          input,
           toolId,
           sessionId
         });
-        break;
-        
-      case 'edit':
-        this.emit('file-edit', {
-          filePath: input.file_path,
-          oldString: input.old_string,
-          newString: input.new_string,
-          replaceAll: input.replace_all,
-          toolId,
-          sessionId
-        });
-        break;
-        
-      case 'write':
-        this.emit('file-write', {
-          filePath: input.file_path,
-          content: input.content,
-          toolId,
-          sessionId
-        });
-        break;
-        
-      case 'read':
-        this.emit('file-read', {
-          filePath: input.file_path,
-          offset: input.offset,
-          limit: input.limit,
-          toolId,
-          sessionId
-        });
-        break;
-        
-      case 'bash':
-        this.emit('bash-command', {
-          command: input.command,
-          description: input.description,
-          toolId,
-          sessionId
-        });
-        break;
-        
-      case 'task':
-        this.emit('task-spawn', {
-          description: input.description,
-          prompt: input.prompt,
-          subagentType: input.subagent_type,
-          toolId,
-          sessionId
-        });
-        break;
-        
-      default:
-        // MCP tools or unknown tools
-        if (toolName.startsWith('mcp__')) {
-          this.emit('mcp-tool', {
-            toolName,
-            input,
-            toolId,
-            sessionId
-          });
-        } else {
-          this.emit('unknown-tool', {
-            toolName,
-            input,
-            toolId,
-            sessionId
-          });
-        }
+      }
     }
   }
 

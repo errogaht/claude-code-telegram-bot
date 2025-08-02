@@ -69,7 +69,7 @@ class MessageSplitter {
         } catch (errorSendingError) {
           // Only log errors in non-test environments
           if (process.env.NODE_ENV !== 'test') {
-            console.error(`❌ Failed to send error message:`, errorSendingError.message);
+            console.error('❌ Failed to send error message:', errorSendingError.message);
           }
         }
       }
@@ -108,7 +108,7 @@ class MessageSplitter {
     
     while (remaining.length > maxLength) {
       // Find the best split point that ensures HTML balance
-      let bestSplitPoint = this.findBestHtmlSplitPoint(remaining, maxLength);
+      const bestSplitPoint = this.findBestHtmlSplitPoint(remaining, maxLength);
       
       // Get the chunk up to best split point  
       let chunk = remaining.substring(0, bestSplitPoint).trim();
@@ -151,8 +151,8 @@ class MessageSplitter {
     
     // Try different split points, preferring longer chunks
     for (let testLength = maxLength; testLength >= minLength; testLength -= 10) {
-      let testPoint = this.findGoodCutoffPoint(text, testLength);
-      let testChunk = text.substring(0, testPoint).trim();
+      const testPoint = this.findGoodCutoffPoint(text, testLength);
+      const testChunk = text.substring(0, testPoint).trim();
       
       // Check if this chunk has balanced HTML
       if (this.isHtmlBalanced(testChunk)) {
@@ -162,7 +162,7 @@ class MessageSplitter {
     }
     
     // If no balanced point found, use the simple approach with tag closing
-    console.log(`⚠️ No balanced split found, using tag-closing approach`);
+    console.log('⚠️ No balanced split found, using tag-closing approach');
     
     // Find a smaller cutoff point and add closing tags
     let cutoffPoint = this.findGoodCutoffPoint(text, Math.floor(maxLength * 0.8));

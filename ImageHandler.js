@@ -139,14 +139,14 @@ class ImageHandler {
       session = await this.sessionManager.createUserSession(userId, chatId);
       
       // Send session init message
-      const sessionInitText = `🚀 **New Session Started**\n\n` +
-        `Ready to process your requests with Claude CLI stream-json mode.\n\n` +
-        `🔄 Session continuity with ID tracking\n` +
-        `🛡️ Auto-permissions enabled\n` +
-        `📋 Live TodoWrite updates active\n` +
-        `📸 Image analysis ready\n\n` +
-        `💡 Use /end to close this session\n` +
-        `📚 Use /sessions to view history`;
+      const sessionInitText = '🚀 **New Session Started**\n\n' +
+        'Ready to process your requests with Claude CLI stream-json mode.\n\n' +
+        '🔄 Session continuity with ID tracking\n' +
+        '🛡️ Auto-permissions enabled\n' +
+        '📋 Live TodoWrite updates active\n' +
+        '📸 Image analysis ready\n\n' +
+        '💡 Use /end to close this session\n' +
+        '📚 Use /sessions to view history';
       
       await this.sessionManager.safeSendMessage(chatId, sessionInitText);
     }

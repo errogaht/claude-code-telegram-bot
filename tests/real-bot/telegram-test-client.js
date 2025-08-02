@@ -137,7 +137,7 @@ class TelegramTestClient {
   // Wait for bot response from telegram-test-api server using getUpdatesHistory
   async waitForBotResponse(timeoutMs = 5000) {
     return new Promise((resolve, reject) => {
-      console.log(`⏳ Waiting for bot response using telegram-test-api getUpdatesHistory...`);
+      console.log('⏳ Waiting for bot response using telegram-test-api getUpdatesHistory...');
       
       const startTime = Date.now();
       let checkCount = 0;

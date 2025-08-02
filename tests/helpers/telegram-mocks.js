@@ -345,7 +345,7 @@ function createTelegramError(type = 'generic') {
         body: {
           ok: false,
           error_code: 400,
-          description: "Bad Request: can't parse entities: Can't find end of the entity starting at byte offset 100"
+          description: 'Bad Request: can\'t parse entities: Can\'t find end of the entity starting at byte offset 100'
         }
       }
     },

@@ -203,7 +203,7 @@ class RealBotTestHelper {
         console.log(`✅ Message sent successfully, message_id: ${result.message_id}`);
         return result;
       } catch (error) {
-        console.error(`❌ Failed to send message:`, error.message);
+        console.error('❌ Failed to send message:', error.message);
         throw error;
       }
     };
@@ -321,21 +321,21 @@ class RealBotTestHelper {
       
       try {
         switch (step.type) {
-          case 'message':
-            response = await this.sendMessageAndWaitForResponse(step.text, step.timeout);
-            break;
-          case 'button':
-            response = await this.pressButtonAndWaitForResponse(step.callbackData, step.messageId, step.timeout);
-            break;
-          case 'voice':
-            response = await this.sendVoiceAndWaitForResponse(step.filePath, step.timeout);
-            break;
-          case 'wait':
-            await new Promise(resolve => setTimeout(resolve, step.duration || 1000));
-            response = { type: 'wait', duration: step.duration };
-            break;
-          default:
-            throw new Error(`Unknown step type: ${step.type}`);
+        case 'message':
+          response = await this.sendMessageAndWaitForResponse(step.text, step.timeout);
+          break;
+        case 'button':
+          response = await this.pressButtonAndWaitForResponse(step.callbackData, step.messageId, step.timeout);
+          break;
+        case 'voice':
+          response = await this.sendVoiceAndWaitForResponse(step.filePath, step.timeout);
+          break;
+        case 'wait':
+          await new Promise(resolve => setTimeout(resolve, step.duration || 1000));
+          response = { type: 'wait', duration: step.duration };
+          break;
+        default:
+          throw new Error(`Unknown step type: ${step.type}`);
         }
         
         results.push({
