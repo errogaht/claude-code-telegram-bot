@@ -36,26 +36,21 @@ pm2 logs
 pm2 monit
 ```
 
-### Applying Code Changes to Running Bots
+### Available Bots
 
-**✅ SAFE: PM2 allows restarting any bot without risk**
+**Three bots are configured and running:**
+- **bot1**: Primary development bot
+- **bot2**: Secondary bot for testing
+- **bot3**: Additional bot instance
 
-**Complete Update Workflow:**
+**Bot Status Check:**
 ```bash
-# 1. Restart bots (safe - can restart any bot)
-pm2 restart bot1
-pm2 restart bot2
-# OR
-pm2 restart all
-
-# 2. Verify bots are running
-pm2 status
+pm2 status    # Check all running bots
 ```
 
 **🤖 Bot Self-Restart (Admin Only):**
 - Admin users can restart bot1 directly via Telegram: `/restart`
 - Bot will send confirmation and restart itself using PM2
-- **IMPORTANT:** Always test code changes by restarting after making changes
 
 ### PM2 Management Commands
 ```bash
@@ -121,14 +116,25 @@ After significant implementation, check if CLAUDE.md needs updates:
 
 **Code Changes Workflow:**
 1. Make code changes (always prefer editing existing files over creating new ones)
-2. **MUST RESTART:** Use PM2 restart workflow above or `/restart` command via Telegram
-3. **MUST TEST:** Verify changes work correctly after restart
-4. Check logs if issues occur: `pm2 logs bot1`
+2. Test changes work correctly 
+3. Check logs if issues occur: `pm2 logs bot1`
 
-**⚠️ CRITICAL:** Bot changes only take effect after restart - always restart and test!
+**⚠️ IMPORTANT:** Bot restart is NOT required after code changes - changes take effect automatically.
 
-**🤖 IMPORTANT FOR CLAUDE:** When you make changes to bot code, you MUST restart the bot yourself using bash commands so the user can test the new functionality:
+## 📝 Git Version Control
+
+### File Handling Rules
+
+**Git Ignore Policy:**
+- If a file is in `.gitignore` and git refuses to add it, **DO NOT force add it**
+- This is by design for sensitive files (tokens, configs, etc.)
+- Use `git add` normally - if it fails with ignore warning, respect the ignore
+
+**NEVER use `git add -f` for ignored files** - they are ignored for security reasons.
+
+**Example - Correct behavior:**
 ```bash
-pm2 restart bot1
+git add configs/bot3.json  # This will fail - that's correct!
+# ❌ DO NOT: git add -f configs/bot3.json
+# ✅ DO: Leave the file ignored as intended
 ```
-**Never forget this step!** The user cannot test new features until the bot is restarted.
