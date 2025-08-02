@@ -1,37 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
 
 /**
  * Project Navigator - Extracted from StreamTelegramBot  
  * Handles project selection and directory management
  */
 class ProjectNavigator {
-  constructor(bot, options) {
+  constructor(bot, options, mainBot) {
     this.bot = bot;
     this.options = options;
+    this.mainBot = mainBot; // Reference to main bot for delegation
     this.projectCache = new Map(); // shortId -> fullPath
     this.projectCacheCounter = 0;
-    this.htmlConverter = new MarkdownHtmlConverter();
   }
 
-  /**
-   * Safe send message with HTML conversion
-   */
-  async safeSendMessage(chatId, text, options = {}) {
-    try {
-      const htmlText = this.htmlConverter.convert(text);
-      const messageOptions = {
-        ...options,
-        parse_mode: 'HTML'
-      };
-      await this.bot.sendMessage(chatId, htmlText, messageOptions);
-    } catch (error) {
-      console.error('HTML message failed:', error);
-      await this.bot.sendMessage(chatId, 'Message formatting error occurred.');
-    }
-  }
 
   /**
    * Get Claude projects from ~/.claude.json
@@ -77,7 +60,7 @@ class ProjectNavigator {
     const projects = this.getClaudeProjects();
     
     if (projects.length === 0) {
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `📁 **Current Directory**\n${this.options.workingDirectory}\n\n` +
         `❌ No Claude projects found\n` +
         `💡 Open projects in Claude Code first`,
@@ -114,7 +97,7 @@ class ProjectNavigator {
     
     const keyboard = { inline_keyboard: buttons };
     
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
       `📋 **Select Claude Project:**\n` +
       `(Showing ${Math.min(projects.length, 15)} projects)`,
@@ -144,7 +127,7 @@ class ProjectNavigator {
             message_id: messageId 
           });
         } else {
-          await this.safeSendMessage(chatId, errorMsg);
+          await this.mainBot.safeSendMessage(chatId, errorMsg);
         }
         return;
       }
@@ -159,7 +142,7 @@ class ProjectNavigator {
             message_id: messageId 
           });
         } else {
-          await this.safeSendMessage(chatId, errorMsg);
+          await this.mainBot.safeSendMessage(chatId, errorMsg);
         }
         return;
       }
@@ -180,7 +163,7 @@ class ProjectNavigator {
           parse_mode: 'HTML'
         });
       } else {
-        await this.safeSendMessage(chatId, successMsg, { parse_mode: 'HTML' });
+        await this.mainBot.safeSendMessage(chatId, successMsg, { parse_mode: 'HTML' });
       }
       
       console.log(`[ProjectNavigator] Directory changed to: ${actualPath}`);
@@ -193,7 +176,7 @@ class ProjectNavigator {
           message_id: messageId 
         });
       } else {
-        await this.safeSendMessage(chatId, errorMsg);
+        await this.mainBot.safeSendMessage(chatId, errorMsg);
       }
     }
   }

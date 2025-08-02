@@ -1,19 +1,18 @@
 const path = require('path');
 const MessageSplitter = require('./MessageSplitter');
-const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
 
 /**
  * Git Manager - Full Git Workflow Management for Telegram Bot
  * Handles comprehensive git operations with mobile-friendly interface
  */
 class GitManager {
-  constructor(bot, options, keyboardHandlers) {
+  constructor(bot, options, keyboardHandlers, mainBot) {
     this.bot = bot;
     this.options = options;
     this.keyboardHandlers = keyboardHandlers;
+    this.mainBot = mainBot; // Reference to main bot for delegation
     this.untrackedFilePagination = null; // For pagination state
     this.messageSplitter = new MessageSplitter();
-    this.htmlConverter = new MarkdownHtmlConverter();
     
     // Enhanced state management for full git operations
     this.gitState = {
@@ -27,22 +26,6 @@ class GitManager {
     };
   }
 
-  /**
-   * Safe send message with HTML conversion
-   */
-  async safeSendMessage(chatId, text, options = {}) {
-    try {
-      const htmlText = this.htmlConverter.convert(text);
-      const messageOptions = {
-        ...options,
-        parse_mode: 'HTML'
-      };
-      await this.safeSendMessage(chatId, htmlText, messageOptions);
-    } catch (error) {
-      console.error('HTML message failed:', error);
-      await this.safeSendMessage(chatId, 'Message formatting error occurred.');
-    }
-  }
 
   /**
    * Main entry point - Show git overview with full workflow options
@@ -60,7 +43,7 @@ class GitManager {
       // Check if we're in a git repository
       const isGitRepo = await this.checkGitRepository();
       if (!isGitRepo) {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           '❌ **Not a Git Repository**\n\n' +
           'This directory is not a git repository.\n' +
           'Use `📂 Projects` to navigate to a git project.',
@@ -91,7 +74,7 @@ class GitManager {
       
     } catch (error) {
       console.error('[Git Manager] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ **Git Manager Error**\n\n\`${error.message}\``,
         { 
           parse_mode: 'HTML',
@@ -338,7 +321,7 @@ class GitManager {
       .replace(/\*([^*]+)\*/g, '<b>$1</b>')  // Convert *text* to <b>text</b>
       .replace(/`([^`]+)`/g, '<code>$1</code>'); // Convert `text` to <code>text</code>
     
-    await this.safeSendMessage(chatId, htmlText, {
+    await this.mainBot.safeSendMessage(chatId, htmlText, {
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
@@ -428,7 +411,7 @@ class GitManager {
       const availableBranches = branchInfo.branches.filter(branch => !branch.current);
       
       if (availableBranches.length === 0) {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           '🌿 **Branch Switching**\n\n' +
           'No other branches available to switch to.\n' +
           `Currently on: \`${branchInfo.currentBranch}\``,
@@ -480,14 +463,14 @@ class GitManager {
         { text: '🔙 Back to Branches', callback_data: 'git:branch:list' }
       ]);
 
-      await this.safeSendMessage(chatId, text, {
+      await this.mainBot.safeSendMessage(chatId, text, {
         parse_mode: 'HTML',
         reply_markup: keyboard
       });
 
     } catch (error) {
       console.error('[Branch Switch List] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Switch Error**\n\n\`${error.message}\``,
         { 
           parse_mode: 'HTML',
@@ -516,7 +499,7 @@ class GitManager {
       const hasChanges = statusResult.stdout.trim().length > 0;
 
       if (hasChanges) {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           '⚠️ **Uncommitted Changes Detected**\n\n' +
           'You have uncommitted changes that would be lost.\n\n' +
           '💡 **Options:**\n' +
@@ -546,7 +529,7 @@ class GitManager {
 
     } catch (error) {
       console.error('[Branch Switch] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Switch Error**\n\n\`${error.message}\``,
         { 
           parse_mode: 'HTML',
@@ -587,7 +570,7 @@ class GitManager {
         // Success! Update our state and show confirmation
         this.gitState.currentBranch = currentBranch;
 
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           `✅ **Branch Switch Successful**\n\n` +
           `**Switched to:** \`${branchName}\`\n\n` +
           '💡 **Next steps:**\n' +
@@ -615,7 +598,7 @@ class GitManager {
 
     } catch (error) {
       console.error('[Perform Branch Switch] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Switch Failed**\n\n` +
         `**Target Branch:** \`${branchName}\`\n` +
         `**Error:** \`${error.message}\`\n\n` +
@@ -697,14 +680,14 @@ class GitManager {
         { text: '🔙 Back to Git', callback_data: 'git:overview' }
       ]);
       
-      await this.safeSendMessage(chatId, text, {
+      await this.mainBot.safeSendMessage(chatId, text, {
         parse_mode: 'HTML',
         reply_markup: keyboard
       });
       
     } catch (error) {
       console.error('[Branch Management] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Management Error**\n\n\`${error.message}\``,
         { 
           parse_mode: 'HTML',
@@ -722,7 +705,7 @@ class GitManager {
    * Show staging interface (placeholder for Phase 3)
    */
   async showStagingInterface(chatId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '📦 **Staging Area**\n\n' +
       'Staging features coming in Phase 3!\n\n' +
       `Staged: ${this.gitState.stagedFiles.length} files\n` +
@@ -743,7 +726,7 @@ class GitManager {
    * Show commit interface (placeholder for Phase 4)
    */
   async showCommitInterface(chatId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '📝 **Commit Changes**\n\n' +
       'Commit features coming in Phase 4!\n\n' +
       `Staged files: ${this.gitState.stagedFiles.length}`,
@@ -836,7 +819,7 @@ class GitManager {
     }
     keyboard.inline_keyboard.push(navRow);
     
-    await this.safeSendMessage(chatId, text, {
+    await this.mainBot.safeSendMessage(chatId, text, {
       parse_mode: 'HTML',
       reply_markup: keyboard
     });
@@ -850,7 +833,7 @@ class GitManager {
    */
   async showDiffFile(chatId, gitStatus, fileIndex = 0, contextLines = 3, wordDiff = false) {
     if (fileIndex >= gitStatus.nameStatus.length) {
-      await this.safeSendMessage(chatId, '❌ File not found');
+      await this.mainBot.safeSendMessage(chatId, '❌ File not found');
       return;
     }
 
@@ -905,7 +888,7 @@ class GitManager {
       });
 
     } catch (error) {
-      await this.safeSendMessage(chatId,
+      await this.mainBot.safeSendMessage(chatId,
         `❌ **Error reading diff for ${path.basename(filename)}**\n\n\`${error.message}\``,
         { parse_mode: 'HTML' }
       );
@@ -1144,7 +1127,7 @@ class GitManager {
     // Send with appropriate parse mode
     let parseMode = 'HTML';
     try {
-      await this.safeSendMessage(chatId, chunk, {
+      await this.mainBot.safeSendMessage(chatId, chunk, {
         parse_mode: parseMode,
         reply_markup: keyboard
       });
@@ -1158,7 +1141,7 @@ class GitManager {
         .replace(/```[\s\S]*?```/g, '[Diff content - formatting error]'); // Replace code blocks
         
       try {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           'There was an issue displaying the diff with formatting.\n' +
           'Raw diff content:\n\n' +
           cleanChunk, 
@@ -1167,7 +1150,7 @@ class GitManager {
           }
         );
       } catch (fallbackError) {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           `❌ Error displaying diff for ${shortName}: ${fallbackError.message}`,
           { reply_markup: keyboard }
         );
@@ -1303,7 +1286,7 @@ class GitManager {
         text += '```\n' + gitStatus.diffStats + '\n```\n\n';
         text += '💡 Choose another view:';
         
-        await this.safeSendMessage(chatId, text, {
+        await this.mainBot.safeSendMessage(chatId, text, {
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
@@ -1316,7 +1299,7 @@ class GitManager {
       
     } catch (error) {
       console.error('[Git Callback] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ Error: ${error.message}`,
         { parse_mode: 'HTML' }
       );
@@ -1359,7 +1342,7 @@ class GitManager {
         await this.showBranchCreation(chatId);
         
       } else {
-        await this.safeSendMessage(chatId, 
+        await this.mainBot.safeSendMessage(chatId, 
           `❌ Unknown branch action: ${action}`,
           { 
             reply_markup: {
@@ -1373,7 +1356,7 @@ class GitManager {
       
     } catch (error) {
       console.error('[Branch Callback] Error:', error);
-      await this.safeSendMessage(chatId, 
+      await this.mainBot.safeSendMessage(chatId, 
         `❌ Branch operation error: ${error.message}`,
         { 
           reply_markup: {
@@ -1390,7 +1373,7 @@ class GitManager {
    * Show branch creation interface (placeholder for Phase 2.2)
    */
   async showBranchCreation(chatId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '🆕 **Create New Branch**\n\n' +
       'Branch creation features coming in Phase 2.2!\n\n' +
       '💡 **Planned features:**\n' +
@@ -1413,7 +1396,7 @@ class GitManager {
    * Handle staging-related callbacks (Phase 3)
    */
   async handleStagingCallback(parts, chatId, messageId, userId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '📦 Staging operations coming in Phase 3!',
       { 
         reply_markup: {
@@ -1429,7 +1412,7 @@ class GitManager {
    * Handle commit-related callbacks (Phase 4)
    */
   async handleCommitCallback(parts, chatId, messageId, userId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '📝 Commit operations coming in Phase 4!',
       { 
         reply_markup: {
@@ -1445,7 +1428,7 @@ class GitManager {
    * Handle remote operations callbacks (Phase 5)
    */
   async handleRemoteCallback(parts, chatId, messageId, userId) {
-    await this.safeSendMessage(chatId, 
+    await this.mainBot.safeSendMessage(chatId, 
       '🌐 Remote operations coming in Phase 5!',
       { 
         reply_markup: {

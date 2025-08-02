@@ -46,15 +46,15 @@ class StreamTelegramBot {
     // Initialize extracted modules
     this.activityIndicator = new ActivityIndicator(this.bot);
     this.sessionManager = new SessionManager(this.formatter, this.options, this.bot, this.activeProcessors, this.activityIndicator, this);
-    this.projectNavigator = new ProjectNavigator(this.bot, this.options);
+    this.projectNavigator = new ProjectNavigator(this.bot, this.options, this);
     this.keyboardHandlers = new KeyboardHandlers(this.bot, this);
     this.messageSplitter = new MessageSplitter();
     
     // Git manager - full git workflow handler
-    this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers);
+    this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers, this);
     
     // Voice message handler
-    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator);
+    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this);
     
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator);

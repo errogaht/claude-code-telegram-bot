@@ -1,5 +1,3 @@
-const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
-
 /**
  * Keyboard Handlers - Extracted from StreamTelegramBot
  * Handles keyboard UI and button press routing
@@ -8,25 +6,8 @@ class KeyboardHandlers {
   constructor(bot, mainBotInstance) {
     this.bot = bot;
     this.mainBot = mainBotInstance; // Reference to main bot for delegation
-    this.htmlConverter = new MarkdownHtmlConverter();
   }
 
-  /**
-   * Safe send message with HTML conversion
-   */
-  async safeSendMessage(chatId, text, options = {}) {
-    try {
-      const htmlText = this.htmlConverter.convert(text);
-      const messageOptions = {
-        ...options,
-        parse_mode: 'HTML'
-      };
-      await this.safeSendMessage(chatId, htmlText, messageOptions);
-    } catch (error) {
-      console.error('HTML message failed:', error);
-      await this.safeSendMessage(chatId, 'Message formatting error occurred.');
-    }
-  }
 
   /**
    * Create persistent reply keyboard with useful buttons
@@ -106,7 +87,7 @@ class KeyboardHandlers {
       case '📍 Path':
         console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
         const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
-        await this.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
+        await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
           parse_mode: 'HTML',
           reply_markup: this.createReplyKeyboard()
         });
