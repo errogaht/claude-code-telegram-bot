@@ -524,7 +524,7 @@ class SessionManager {
       'Previous session saved to history.\n' +
       'Use /sessions to view session history.',
       { 
-        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup(userId)
       }
     );
   }
@@ -538,7 +538,7 @@ class SessionManager {
 
     if (!session) {
       await this.mainBot.safeSendMessage(chatId, '⚠️ **No active session to end**', { 
-        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup(userId)
       });
       return;
     }
@@ -568,7 +568,7 @@ class SessionManager {
       'Session saved to history.\n' +
       'Use /new to start a new session.',
       { 
-        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup(userId)
       }
     );
   }

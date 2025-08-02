@@ -129,8 +129,21 @@ class VoiceMessageHandler {
         // Remove from pending
         this.pendingCommands.delete(messageId);
         
-        // Process the command via callback
-        await processUserMessageCallback(transcribedText, userId, chatId);
+        // Check if concat mode is enabled
+        if (this.mainBot.getConcatModeStatus(userId)) {
+          const bufferSize = await this.mainBot.addToMessageBuffer(userId, {
+            type: 'voice',
+            content: transcribedText,
+            imagePath: null
+          });
+          
+          await this.mainBot.safeEditMessage(chatId, messageId, 
+            `📝 **Voice Added to Buffer**\n\n🎤 Transcription: "${transcribedText}"\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`
+          );
+        } else {
+          // Normal processing
+          await processUserMessageCallback(transcribedText, userId, chatId);
+        }
         
       } else if (data.startsWith('voice_cancel:')) {
         await this.mainBot.safeEditMessage(chatId, messageId,

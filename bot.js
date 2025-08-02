@@ -43,6 +43,10 @@ class StreamTelegramBot {
     // Core services
     this.activeProcessors = new Set();
     
+    // Message concatenation state management
+    this.concatMode = new Map(); // userId -> boolean (concat mode status)
+    this.messageBuffer = new Map(); // userId -> Array of buffered messages
+    
     // Initialize extracted modules
     this.activityIndicator = new ActivityIndicator(this.bot);
     this.sessionManager = new SessionManager(this.formatter, this.options, this.bot, this.activeProcessors, this.activityIndicator, this);
@@ -57,7 +61,7 @@ class StreamTelegramBot {
     this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this);
     
     // Image message handler
-    this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator);
+    this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -220,7 +224,7 @@ class StreamTelegramBot {
         'Just send me a message to start!';
       
       await this.safeSendMessage(msg.chat.id, welcomeText, { 
-        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
       });
     });
 
@@ -233,7 +237,7 @@ class StreamTelegramBot {
       await this.sessionManager.cancelUserSession(msg.chat.id);
       await this.safeSendMessage(msg.chat.id, '🛑 *Session Cancelled*\n\nAll processes stopped.', {
         forceNotification: true,  // Critical user action
-        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
       });
     });
 
@@ -435,7 +439,23 @@ class StreamTelegramBot {
 
     console.log(`[User ${userId}] Message: ${text}`);
 
-    // Use unified message processor
+    // Check if concat mode is enabled
+    if (this.getConcatModeStatus(userId)) {
+      // Add to buffer instead of processing immediately
+      const bufferSize = await this.addToMessageBuffer(userId, {
+        type: 'text',
+        content: text,
+        imagePath: null
+      });
+      
+      // Send buffer status update
+      await this.safeSendMessage(chatId, `📝 **Added to Buffer**\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`, {
+        reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
+      });
+      return;
+    }
+
+    // Normal processing if concat mode is off
     await this.processUserMessage(text, userId, chatId);
   }
 
@@ -459,10 +479,15 @@ class StreamTelegramBot {
   /**
    * Show current working directory
    */
-  async showCurrentDirectory(chatId) {
+  async showCurrentDirectory(chatId, userId = null) {
     const currentDir = this.options.workingDirectory;
     const dirName = path.basename(currentDir);
     const parentDir = path.dirname(currentDir);
+    
+    // Get userId from chatId if not provided
+    if (!userId) {
+      userId = this.getUserIdFromChat(chatId);
+    }
     
     await this.safeSendMessage(chatId,
       '📁 *Current Working Directory*\n\n' +
@@ -471,7 +496,7 @@ class StreamTelegramBot {
       `🔗 **Full Path:** \`${currentDir}\`\n\n` +
       '💡 Use /cd to change directory',
       { 
-        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
       }
     );
   }
@@ -498,7 +523,7 @@ class StreamTelegramBot {
       `🔄 **Status:** active for new sessions${sessionInfo}`,
       { 
         forceNotification: true,  // Important user setting change
-        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+        reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
       }
     );
   }
@@ -810,6 +835,22 @@ class StreamTelegramBot {
   }
 
   /**
+   * Sanitize HTML content to fix malformed patterns while preserving valid HTML
+   */
+  sanitizeHtmlContent(text) {
+    if (!text || typeof text !== 'string') return '';
+    
+    // Find all malformed HTML-like patterns that could cause Telegram API errors
+    // Pattern: < followed by quote/apostrophe (not a valid HTML tag)
+    const malformedPatterns = /<['"`][^>]*['"`]?(?![>])/g;
+    
+    return text.replace(malformedPatterns, (match) => {
+      // Escape the malformed pattern by replacing < with &lt;
+      return match.replace(/</g, '&lt;');
+    });
+  }
+
+  /**
    * Safely send message with proper Telegram markdown sanitization
    */
   async safeSendMessage(chatId, text, options = {}) {
@@ -822,6 +863,9 @@ class StreamTelegramBot {
         const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
         const converter = new MarkdownHtmlConverter();
         htmlText = converter.convert(text);
+      } else {
+        // Even if text contains HTML, validate and fix malformed patterns
+        htmlText = this.sanitizeHtmlContent(text);
       }
       
       const messageOptions = {
@@ -1203,7 +1247,7 @@ class StreamTelegramBot {
           '🚀 Send any message to start using Claude Code!',
           { 
             forceNotification: true,  // Important admin setup message
-            reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+            reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
           }
         ).catch(error => {
           console.error('Error sending admin welcome message:', error);
@@ -1385,6 +1429,164 @@ class StreamTelegramBot {
       activeIndicators: activityStats.activeIndicators,
       uptime: process.uptime()
     };
+  }
+
+  // ==================== MESSAGE CONCATENATION FEATURE ====================
+
+  /**
+   * Get concat mode status for a user
+   */
+  getConcatModeStatus(userId) {
+    return this.concatMode.get(userId) || false;
+  }
+
+  /**
+   * Enable concat mode for a user
+   */
+  async enableConcatMode(userId, chatId) {
+    this.concatMode.set(userId, true);
+    this.messageBuffer.set(userId, []);
+    
+    console.log(`[User ${userId}] Concat mode enabled`);
+    
+    const instructionMessage = `🔗 **Concat Mode Enabled**
+
+📝 **How to use:**
+• Send any messages (text, voice, images)
+• All messages will be collected in a buffer
+• Click "📤 Concat Send" to process all at once
+• Click "🔗 Concat On" again to disable
+
+📊 **Buffer**: 0 messages`;
+
+    await this.safeSendMessage(chatId, instructionMessage, {
+      reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
+    });
+  }
+
+  /**
+   * Disable concat mode for a user
+   */
+  async disableConcatMode(userId, chatId, clearBuffer = true) {
+    this.concatMode.set(userId, false);
+    if (clearBuffer) {
+      this.messageBuffer.set(userId, []);
+    }
+    
+    console.log(`[User ${userId}] Concat mode disabled, clearBuffer: ${clearBuffer}`);
+    
+    await this.safeSendMessage(chatId, '🔗 **Concat Mode Disabled**\n\nMessages will be sent immediately again.', {
+      reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
+    });
+  }
+
+  /**
+   * Add message to buffer
+   */
+  async addToMessageBuffer(userId, messageData) {
+    if (!this.messageBuffer.has(userId)) {
+      this.messageBuffer.set(userId, []);
+    }
+    
+    const buffer = this.messageBuffer.get(userId);
+    buffer.push({
+      ...messageData,
+      timestamp: new Date()
+    });
+    
+    console.log(`[User ${userId}] Added to buffer: ${messageData.type} message. Buffer size: ${buffer.length}`);
+    return buffer.length;
+  }
+
+  /**
+   * Get buffer size for a user
+   */
+  getBufferSize(userId) {
+    const buffer = this.messageBuffer.get(userId);
+    return buffer ? buffer.length : 0;
+  }
+
+  /**
+   * Get message buffer for a user
+   */
+  getMessageBuffer(userId) {
+    return this.messageBuffer.get(userId) || [];
+  }
+
+  /**
+   * Clear message buffer for a user
+   */
+  clearMessageBuffer(userId) {
+    this.messageBuffer.set(userId, []);
+    console.log(`[User ${userId}] Message buffer cleared`);
+  }
+
+  /**
+   * Combine buffered messages into a single message
+   */
+  async combineBufferedMessages(buffer) {
+    let combinedText = '';
+    const imagePaths = [];
+    
+    for (let i = 0; i < buffer.length; i++) {
+      const message = buffer[i];
+      const messageNumber = i + 1;
+      
+      switch (message.type) {
+        case 'text':
+          combinedText += `[Message ${messageNumber} - Text]\n${message.content}\n\n`;
+          break;
+          
+        case 'voice':
+          combinedText += `[Message ${messageNumber} - Voice Transcription]\n${message.content}\n\n`;
+          break;
+          
+        case 'image':
+          combinedText += `[Message ${messageNumber} - Image${message.content ? ' with caption' : ''}]\n`;
+          if (message.content) {
+            combinedText += `Caption: ${message.content}\n`;
+          }
+          combinedText += `Image: ${message.imagePath}\n\n`;
+          imagePaths.push(message.imagePath);
+          break;
+      }
+    }
+    
+    // Add summary header
+    const summaryHeader = `Combined Message (${buffer.length} parts):\n${'='.repeat(40)}\n\n`;
+    
+    return summaryHeader + combinedText.trim();
+  }
+
+  /**
+   * Send concatenated message
+   */
+  async sendConcatenatedMessage(userId, chatId) {
+    const buffer = this.messageBuffer.get(userId) || [];
+    
+    if (buffer.length === 0) {
+      await this.safeSendMessage(chatId, '📭 **Empty Buffer**\n\nNo messages to send. Add some messages first!', {
+        reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
+      });
+      return;
+    }
+
+    // Combine all messages
+    const combinedMessage = await this.combineBufferedMessages(buffer);
+    
+    // Clear buffer and disable concat mode
+    this.messageBuffer.set(userId, []);
+    this.concatMode.set(userId, false);
+    
+    console.log(`[User ${userId}] Sending concatenated message with ${buffer.length} parts`);
+    
+    // Send notification
+    await this.safeSendMessage(chatId, `📤 **Sending Combined Message**\n\nProcessing ${buffer.length} messages...`, {
+      reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
+    });
+    
+    // Process the combined message
+    await this.processUserMessage(combinedMessage, userId, chatId);
   }
 }
 

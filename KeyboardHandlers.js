@@ -12,7 +12,15 @@ class KeyboardHandlers {
   /**
    * Create persistent reply keyboard with useful buttons
    */
-  createReplyKeyboard() {
+  createReplyKeyboard(userId = null) {
+    // Determine concat button based on mode and buffer status
+    let concatButton = { text: '🔗 Concat On' };
+    
+    if (userId && this.mainBot.getConcatModeStatus && this.mainBot.getConcatModeStatus(userId)) {
+      const bufferCount = this.mainBot.getBufferSize ? this.mainBot.getBufferSize(userId) : 0;
+      concatButton = { text: `📤 Concat Send (${bufferCount})` };
+    }
+
     return {
       keyboard: [
         [
@@ -31,6 +39,7 @@ class KeyboardHandlers {
           { text: '📁 Git' }
         ],
         [
+          concatButton,
           { text: '🔄 Restart Bot' }
         ]
       ],
@@ -56,7 +65,7 @@ class KeyboardHandlers {
       await this.mainBot.sessionManager.cancelUserSession(chatId);
       await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
         forceNotification: true,  // Critical user action
-        reply_markup: this.createReplyKeyboard()
+        reply_markup: this.createReplyKeyboard(userId)
       });
       return true;
         
@@ -75,7 +84,7 @@ class KeyboardHandlers {
       await this.mainBot.sessionManager.startNewSession(chatId);
       await this.mainBot.safeSendMessage(chatId, '🔄 **New Session**\n\nOld session ended, new session started.', {
         forceNotification: true,  // Important session action
-        reply_markup: this.createReplyKeyboard()
+        reply_markup: this.createReplyKeyboard(userId)
       });
       return true;
         
@@ -88,7 +97,7 @@ class KeyboardHandlers {
       console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
       const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
       await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
-        reply_markup: this.createReplyKeyboard()
+        reply_markup: this.createReplyKeyboard(userId)
       });
       return true;
         
@@ -117,15 +126,26 @@ class KeyboardHandlers {
             '👤 This action requires admin privileges.',
           {
             forceNotification: true,
-            reply_markup: this.createReplyKeyboard()
+            reply_markup: this.createReplyKeyboard(userId)
           }
         );
       } else {
         await this.mainBot.restartBot(chatId, userId);
       }
       return true;
+
+    case '🔗 Concat On':
+      console.log(`[COMPONENT] StreamTelegramBot.enableConcatMode - userId: ${userId}, chatId: ${chatId}`);
+      await this.mainBot.enableConcatMode(userId, chatId);
+      return true;
         
     default:
+      // Check if it's a "Concat Send" button with count
+      if (text.startsWith('📤 Concat Send')) {
+        console.log(`[COMPONENT] StreamTelegramBot.sendConcatenatedMessage - userId: ${userId}, chatId: ${chatId}`);
+        await this.mainBot.sendConcatenatedMessage(userId, chatId);
+        return true;
+      }
       return false; // Not a keyboard button
     }
   }
@@ -282,8 +302,8 @@ class KeyboardHandlers {
   /**
    * Get reply keyboard markup for sending with messages
    */
-  getReplyKeyboardMarkup() {
-    return this.createReplyKeyboard();
+  getReplyKeyboardMarkup(userId = null) {
+    return this.createReplyKeyboard(userId);
   }
 
   /**

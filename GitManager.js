@@ -48,7 +48,7 @@ class GitManager {
           'This directory is not a git repository.\n' +
           'Use `📂 Projects` to navigate to a git project.',
           { 
-            reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+            reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(this.mainBot.getUserIdFromChat(chatId))
           }
         );
         return;
@@ -76,7 +76,7 @@ class GitManager {
       await this.mainBot.safeSendMessage(chatId, 
         `❌ **Git Manager Error**\n\n\`${error.message}\``,
         { 
-          reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
+          reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(this.mainBot.getUserIdFromChat(chatId))
         }
       );
     }

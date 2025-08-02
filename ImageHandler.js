@@ -8,10 +8,11 @@ const path = require('path');
  * Handles image downloads, temp file management, and Claude integration
  */
 class ImageHandler {
-  constructor(bot, sessionManager, activityIndicator) {
+  constructor(bot, sessionManager, activityIndicator, mainBot) {
     this.bot = bot;
     this.sessionManager = sessionManager;
     this.activityIndicator = activityIndicator;
+    this.mainBot = mainBot; // Reference to main bot for concat mode access
   }
 
   /**
@@ -44,6 +45,23 @@ class ImageHandler {
       }
 
       console.log(`[User ${userId}] Sending to Claude: "${message}"`);
+
+      // Check if concat mode is enabled
+      if (this.mainBot && this.mainBot.getConcatModeStatus(userId)) {
+        // Add image to buffer
+        const bufferSize = await this.mainBot.addToMessageBuffer(userId, {
+          type: 'image',
+          content: caption,
+          imagePath: imagePath
+        });
+        
+        await this.mainBot.safeSendMessage(chatId, 
+          `🖼️ **Image Added to Buffer**\n\n${caption ? `Caption: ${caption}` : 'No caption'}\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`, {
+            reply_markup: this.mainBot.keyboardHandlers.createReplyKeyboard(userId)
+          }
+        );
+        return;
+      }
 
       // Process message with temp file cleanup tracking
       await this.processImageMessage(message, userId, chatId, imagePath, processUserMessageCallback);
