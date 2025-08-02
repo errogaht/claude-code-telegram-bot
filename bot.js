@@ -30,6 +30,9 @@ class StreamTelegramBot {
     // Store config file path for saving admin ID
     this.configFilePath = options.configFilePath;
     
+    // Store bot instance name for PM2 restart
+    this.botInstanceName = options.botInstanceName || 'bot1';
+    
     // Admin user management
     this.adminUserId = options.adminUserId ? parseInt(options.adminUserId) : null;
     this.authorizedUsers = new Set();
@@ -1079,8 +1082,8 @@ class StreamTelegramBot {
       
       // Send restart confirmation message
       await this.bot.sendMessage(chatId, 
-        '🔄 *Bot Restart Initiated*\n\n' +
-        '⏳ Restarting bot1 process...\n' +
+        '🔄 **Bot Restart Initiated**\n\n' +
+        `⏳ Restarting ${this.botInstanceName} process...\n` +
         '🚀 Bot will be back online shortly!',
         { parse_mode: 'HTML' }
       );
@@ -1091,12 +1094,12 @@ class StreamTelegramBot {
       const execAsync = promisify(exec);
       
       // Execute PM2 restart command
-      const result = await execAsync('pm2 restart bot1');
+      const result = await execAsync(`pm2 restart ${this.botInstanceName}`);
       console.log(`[Admin] PM2 restart output: ${result.stdout}`);
       
       // The process will be killed by PM2, so this message might not send
       await this.bot.sendMessage(chatId, 
-        '✅ *Restart Command Sent*\n\n' +
+        '✅ **Restart Command Sent**\n\n' +
         '🔄 PM2 is restarting the bot process...',
         { parse_mode: 'HTML' }
       );
@@ -1104,9 +1107,9 @@ class StreamTelegramBot {
     } catch (error) {
       console.error('[Admin] Error restarting bot:', error);
       await this.bot.sendMessage(chatId, 
-        '❌ *Restart Failed*\n\n' +
+        '❌ **Restart Failed**\n\n' +
         `Error: \`${error.message}\`\n\n` +
-        '💡 Try using `pm2 restart bot1` manually.',
+        `💡 Try using \`pm2 restart ${this.botInstanceName}\` manually.`,
         { parse_mode: 'HTML' }
       );
     }

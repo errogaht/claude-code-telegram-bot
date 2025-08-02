@@ -25,10 +25,10 @@ class VoiceMessageHandler {
         ...options,
         parse_mode: 'HTML'
       };
-      await this.safeSendMessage(chatId, htmlText, messageOptions);
+      return await this.bot.sendMessage(chatId, htmlText, messageOptions);
     } catch (error) {
       console.error('HTML message failed:', error);
-      await this.safeSendMessage(chatId, 'Message formatting error occurred.');
+      return await this.bot.sendMessage(chatId, 'Message formatting error occurred.');
     }
   }
 
