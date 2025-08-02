@@ -15,7 +15,9 @@ jest.mock('os');
 
 const createMockBot = () => ({
   sendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
-  editMessageText: jest.fn().mockResolvedValue(true)
+  editMessageText: jest.fn().mockResolvedValue(true),
+  safeSendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
+  safeEditMessage: jest.fn().mockResolvedValue(true)
 });
 
 const createMockOptions = () => ({
@@ -37,7 +39,7 @@ describe('ProjectNavigator', () => {
     mockPath = path;
     mockOs = os;
 
-    projectNavigator = new ProjectNavigator(mockBot, mockOptions);
+    projectNavigator = new ProjectNavigator(mockBot, mockOptions, mockBot);
 
     // Setup default mocks
     mockOs.homedir.mockReturnValue('/home/user');
@@ -216,10 +218,9 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        expect.stringContaining('❌ No Claude projects found'),
-        { parse_mode: 'Markdown' }
+        expect.stringContaining('❌ No Claude projects found')
       );
     });
 
@@ -229,11 +230,10 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        expect.stringContaining('📋 *Select Claude Project:*'),
+        expect.stringContaining('📋 **Select Claude Project:**'),
         expect.objectContaining({
-          parse_mode: 'Markdown',
           reply_markup: expect.objectContaining({
             inline_keyboard: expect.any(Array)
           })

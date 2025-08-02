@@ -459,7 +459,7 @@ class SessionManager {
       return;
     }
 
-    let text = `📊 **Session Status**\n\n`;
+    let text = '📊 **Session Status**\n\n';
 
     if (session) {
       // Active session exists
@@ -475,12 +475,12 @@ class SessionManager {
       text += `⏱ **Uptime:** ${uptime}s\n`;
     } else if (storedSessionId) {
       // Only stored session exists (bot was restarted)
-      text += `🆔 **Current:** 💤 **Not active**\n`;
+      text += '🆔 **Current:** 💤 **Not active**\n';
       text += `📋 **Stored:** \`${storedSessionId.slice(-8)}\` **(can resume)**\n`;
-      text += `📊 **Status:** ⏸️ **Paused (bot restarted)**\n`;
-      text += `💬 **Messages:** -\n`;
-      text += `⏱ **Uptime:** -\n`;
-      text += `\n💡 **Send a message to resume this session**\n`;
+      text += '📊 **Status:** ⏸️ **Paused (bot restarted)**\n';
+      text += '💬 **Messages:** -\n';
+      text += '⏱ **Uptime:** -\n';
+      text += '\n💡 **Send a message to resume this session**\n';
     }
 
     const path = require('path');
@@ -519,10 +519,10 @@ class SessionManager {
     
     const path = require('path');
     await this.mainBot.safeSendMessage(chatId, 
-      `🆕 **New session started**\n\n` +
+      '🆕 **New session started**\n\n' +
       `📁 **Directory:** ${path.basename(this.options.workingDirectory)}\n` +
-      `Previous session saved to history.\n` +
-      `Use /sessions to view session history.`,
+      'Previous session saved to history.\n' +
+      'Use /sessions to view session history.',
       { 
         reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
       }
@@ -561,12 +561,12 @@ class SessionManager {
     
     const path = require('path');
     await this.mainBot.safeSendMessage(chatId, 
-      `🔚 **Session ended**\n\n` +
+      '🔚 **Session ended**\n\n' +
       `💬 Messages: ${messageCount}\n` +
       `⏱ Duration: ${uptime}s\n` +
       `📁 Directory: ${path.basename(this.options.workingDirectory)}\n\n` +
-      `Session saved to history.\n` +
-      `Use /new to start a new session.`,
+      'Session saved to history.\n' +
+      'Use /new to start a new session.',
       { 
         reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
       }
@@ -710,7 +710,7 @@ class SessionManager {
         }
         
         await this.mainBot.safeSendMessage(chatId, text, { 
-            reply_markup: keyboard 
+          reply_markup: keyboard 
         });
       }
       
@@ -880,7 +880,7 @@ class SessionManager {
         `✅ **Resuming session** \`${sessionId.slice(-8)}\`\n\nSession will continue with next message.`,
         {
           chat_id: chatId,
-          message_id: messageId,
+          message_id: messageId
         }
       );
 
@@ -995,7 +995,7 @@ class SessionManager {
         await this.bot.editMessageText(text, {
           chat_id: chatId,
           message_id: messageId,
-            reply_markup: keyboard
+          reply_markup: keyboard
         });
         
       } catch (editError) {

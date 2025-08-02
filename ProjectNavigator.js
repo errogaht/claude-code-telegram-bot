@@ -62,8 +62,8 @@ class ProjectNavigator {
     if (projects.length === 0) {
       await this.mainBot.safeSendMessage(chatId, 
         `📁 **Current Directory**\n${this.options.workingDirectory}\n\n` +
-        `❌ No Claude projects found\n` +
-        `💡 Open projects in Claude Code first`
+        '❌ No Claude projects found\n' +
+        '💡 Open projects in Claude Code first'
       );
       return;
     }
@@ -98,7 +98,7 @@ class ProjectNavigator {
     
     await this.mainBot.safeSendMessage(chatId, 
       `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
-      `📋 **Select Claude Project:**\n` +
+      '📋 **Select Claude Project:**\n' +
       `(Showing ${Math.min(projects.length, 15)} projects)`,
       { reply_markup: keyboard }
     );
@@ -148,10 +148,10 @@ class ProjectNavigator {
       await this.saveCurrentProjectToConfig(actualPath);
       
       const successMsg = 
-        `✅ **Directory Changed**\n\n` +
+        '✅ **Directory Changed**\n\n' +
         `📁 **New Directory:**\n\`${actualPath}\`\n\n` +
-        `💡 New sessions will use this directory\n` +
-        `🔄 Use /new to start fresh session here`;
+        '💡 New sessions will use this directory\n' +
+        '🔄 Use /new to start fresh session here';
       
       if (messageId) {
         await this.mainBot.safeEditMessage(chatId, messageId, successMsg);

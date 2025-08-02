@@ -102,7 +102,7 @@ class GitManager {
         cwd: this.options.workingDirectory 
       });
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   }
@@ -119,7 +119,7 @@ class GitManager {
     try {
       // Get current branch and ahead/behind info
       let currentBranch = 'main';
-      let aheadBehind = { ahead: 0, behind: 0 };
+      const aheadBehind = { ahead: 0, behind: 0 };
       
       try {
         const branchResult = await execAsync('git branch --show-current', { cwd });
@@ -190,7 +190,7 @@ class GitManager {
             const content = fs.readFileSync(filePath, 'utf8');
             const lineCount = content.split('\n').length;
             allNumStats.push(`${lineCount}\t0\t${filename}`);
-          } catch (error) {
+          } catch (_error) {
             allNumStats.push(`0\t0\t${filename}`);
           }
         } else {
@@ -563,7 +563,7 @@ class GitManager {
         this.gitState.currentBranch = currentBranch;
 
         await this.mainBot.safeSendMessage(chatId, 
-          `✅ **Branch Switch Successful**\n\n` +
+          '✅ **Branch Switch Successful**\n\n' +
           `**Switched to:** \`${branchName}\`\n\n` +
           '💡 **Next steps:**\n' +
           '• View file changes\n' +
@@ -590,7 +590,7 @@ class GitManager {
     } catch (error) {
       console.error('[Perform Branch Switch] Error:', error);
       await this.mainBot.safeSendMessage(chatId, 
-        `❌ **Branch Switch Failed**\n\n` +
+        '❌ **Branch Switch Failed**\n\n' +
         `**Target Branch:** \`${branchName}\`\n` +
         `**Error:** \`${error.message}\`\n\n` +
         '💡 This might happen if:\n' +
@@ -945,7 +945,7 @@ class GitManager {
     let formatted = `📄 *${escapedFilename}*\n\n`;
     let inHunk = false;
     
-    for (let line of lines) {
+    for (const line of lines) {
       // Skip git metadata lines except hunk headers
       if (line.startsWith('diff --git') || 
           line.startsWith('index ') || 

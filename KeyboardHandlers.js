@@ -51,82 +51,82 @@ class KeyboardHandlers {
     console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
     
     switch (text) {
-      case '🛑 STOP':
-        console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
-        await this.mainBot.sessionManager.cancelUserSession(chatId);
-        await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
-          forceNotification: true,  // Critical user action
-          reply_markup: this.createReplyKeyboard()
-        });
-        return true;
+    case '🛑 STOP':
+      console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
+      await this.mainBot.sessionManager.cancelUserSession(chatId);
+      await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
+        forceNotification: true,  // Critical user action
+        reply_markup: this.createReplyKeyboard()
+      });
+      return true;
         
-      case '📊 Status':
-        console.log(`[COMPONENT] SessionManager.showSessionStatus - chatId: ${chatId}`);
-        await this.mainBot.sessionManager.showSessionStatus(chatId);
-        return true;
+    case '📊 Status':
+      console.log(`[COMPONENT] SessionManager.showSessionStatus - chatId: ${chatId}`);
+      await this.mainBot.sessionManager.showSessionStatus(chatId);
+      return true;
         
-      case '📂 Projects':
-        console.log(`[COMPONENT] ProjectNavigator.showProjectSelection - chatId: ${chatId}`);
-        await this.mainBot.projectNavigator.showProjectSelection(chatId);
-        return true;
+    case '📂 Projects':
+      console.log(`[COMPONENT] ProjectNavigator.showProjectSelection - chatId: ${chatId}`);
+      await this.mainBot.projectNavigator.showProjectSelection(chatId);
+      return true;
         
-      case '🔄 New Session':
-        console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${chatId}`);
-        await this.mainBot.sessionManager.startNewSession(chatId);
-        await this.mainBot.safeSendMessage(chatId, '🔄 **New Session**\n\nOld session ended, new session started.', {
-          forceNotification: true,  // Important session action
-          reply_markup: this.createReplyKeyboard()
-        });
-        return true;
+    case '🔄 New Session':
+      console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${chatId}`);
+      await this.mainBot.sessionManager.startNewSession(chatId);
+      await this.mainBot.safeSendMessage(chatId, '🔄 **New Session**\n\nOld session ended, new session started.', {
+        forceNotification: true,  // Important session action
+        reply_markup: this.createReplyKeyboard()
+      });
+      return true;
         
-      case '📝 Sessions':
-        console.log(`[COMPONENT] SessionManager.showSessionHistory - chatId: ${chatId}`);
-        await this.mainBot.sessionManager.showSessionHistory(chatId);
-        return true;
+    case '📝 Sessions':
+      console.log(`[COMPONENT] SessionManager.showSessionHistory - chatId: ${chatId}`);
+      await this.mainBot.sessionManager.showSessionHistory(chatId);
+      return true;
         
-      case '📍 Path':
-        console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
-        const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
-        await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
-          reply_markup: this.createReplyKeyboard()
-        });
-        return true;
+    case '📍 Path':
+      console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
+      const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
+      await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
+        reply_markup: this.createReplyKeyboard()
+      });
+      return true;
         
-      case '🤖 Model':
-        console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
-        await this.mainBot.showModelSelection(chatId);
-        return true;
+    case '🤖 Model':
+      console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
+      await this.mainBot.showModelSelection(chatId);
+      return true;
         
-      case '🧠 Thinking':
-        console.log(`[COMPONENT] StreamTelegramBot.showThinkingModeSelection - chatId: ${chatId}`);
-        await this.mainBot.showThinkingModeSelection(chatId);
-        return true;
+    case '🧠 Thinking':
+      console.log(`[COMPONENT] StreamTelegramBot.showThinkingModeSelection - chatId: ${chatId}`);
+      await this.mainBot.showThinkingModeSelection(chatId);
+      return true;
         
-      case '📁 Git':
-        console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${chatId}`);
-        await this.mainBot.gitManager.showGitOverview(chatId);
-        return true;
+    case '📁 Git':
+      console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${chatId}`);
+      await this.mainBot.gitManager.showGitOverview(chatId);
+      return true;
         
-      case '🔄 Restart Bot':
-        console.log(`[COMPONENT] StreamTelegramBot.restartBot - userId: ${userId}, chatId: ${chatId}`);
-        // Check if user is admin
-        if (!this.mainBot.authorizedUsers.has(userId)) {
-          await this.mainBot.safeSendMessage(chatId, 
-            '❌ **Access Denied**\n\n' +
+    case '🔄 Restart Bot':
+      console.log(`[COMPONENT] StreamTelegramBot.restartBot - userId: ${userId}, chatId: ${chatId}`);
+      // Check if user is admin
+      if (!this.mainBot.authorizedUsers.has(userId)) {
+        await this.mainBot.safeSendMessage(chatId, 
+          '❌ **Access Denied**\n\n' +
             'Only administrators can restart the bot.\n' +
             '👤 This action requires admin privileges.',
-            {
-              forceNotification: true,
-              reply_markup: this.createReplyKeyboard()
-            }
-          );
-        } else {
-          await this.mainBot.restartBot(chatId, userId);
-        }
-        return true;
+          {
+            forceNotification: true,
+            reply_markup: this.createReplyKeyboard()
+          }
+        );
+      } else {
+        await this.mainBot.restartBot(chatId, userId);
+      }
+      return true;
         
-      default:
-        return false; // Not a keyboard button
+    default:
+      return false; // Not a keyboard button
     }
   }
 

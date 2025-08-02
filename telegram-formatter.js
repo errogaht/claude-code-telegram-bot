@@ -192,7 +192,7 @@ class TelegramFormatter {
       
       text += `\n\n**Content:**\n\`\`\`\n${contentPreview}\n\`\`\``;
     } else if (toolResult && toolResult.isError) {
-      text += `\n\n❌ **Error reading file**`;
+      text += '\n\n❌ **Error reading file**';
     }
     
     return text;
@@ -264,7 +264,7 @@ class TelegramFormatter {
     
     // Format input parameters
     if (input && Object.keys(input).length > 0) {
-      text += `**Parameters:**\n`;
+      text += '**Parameters:**\n';
       Object.entries(input).forEach(([key, value]) => {
         const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
         const valuePreview = valueStr.length > 100 ? 
@@ -296,7 +296,7 @@ class TelegramFormatter {
   formatSessionInit(sessionData) {
     const { sessionId, model, cwd, tools, permissionMode } = sessionData;
     
-    let text = `🚀 **Session Started**\n\n`;
+    let text = '🚀 **Session Started**\n\n';
     text += `🆔 **Session:** \`${sessionId ? sessionId.slice(-8) : 'Not started'}\`\n`;
     text += `🤖 **Model:** ${model || 'unknown'}\n`;
     text += `📁 **Directory:** \`${cwd || 'unknown'}\`\n`;
@@ -335,7 +335,7 @@ class TelegramFormatter {
    * Format error message (returns Markdown text)
    */
   formatError(error, context = '') {
-    let text = `❌ **Error**`;
+    let text = '❌ **Error**';
     
     if (context) {
       text += ` in ${context}`;
@@ -376,7 +376,7 @@ class TelegramFormatter {
     
     // Replace backticks and other problematic characters
     return text
-      .replace(/`/g, "'")  // Replace backticks with single quotes
+      .replace(/`/g, '\'')  // Replace backticks with single quotes
       .replace(/\r/g, '')  // Remove carriage returns
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // Remove control characters
       .replace(/[\u{1F600}-\u{1F6FF}]/gu, '[emoji]') // Replace emojis that might break parsing

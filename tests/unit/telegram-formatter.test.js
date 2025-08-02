@@ -428,7 +428,7 @@ describe('TelegramFormatter', () => {
   describe('Code Block Escaping', () => {
     test('should escape backticks in code blocks', () => {
       const result = formatter.escapeForCodeBlock('const template = `Hello ${name}`;');
-      expect(result).toBe("const template = 'Hello ${name}';");
+      expect(result).toBe('const template = \'Hello ${name}\';');
     });
 
     test('should remove control characters', () => {

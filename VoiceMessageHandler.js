@@ -33,7 +33,7 @@ class VoiceMessageHandler {
       
       if (isTestMode) {
         // Test mode - provide simulated transcription
-        transcribedText = "Test voice message transcription";
+        transcribedText = 'Test voice message transcription';
         console.log('[Voice] Test mode - using simulated transcription');
       } else {
         // Production mode - use Nexara API
@@ -59,10 +59,10 @@ class VoiceMessageHandler {
       };
       
       const confirmMsg = await this.mainBot.safeSendMessage(chatId,
-        `🎤 *Voice Message Received*\n\n` +
+        '🎤 *Voice Message Received*\n\n' +
         `📝 **Text:** "${transcribedText}"\n\n` +
         `${isTestMode ? '🧪 **Test Mode:** Simulated transcription\n\n' : ''}` +
-        `❓ Execute this command?`,
+        '❓ Execute this command?',
         {
           reply_markup: keyboard
         }
@@ -88,8 +88,8 @@ class VoiceMessageHandler {
       // Send error message to user
       try {
         await this.mainBot.safeSendMessage(chatId,
-          `❌ *Voice Message Error*\n\n` +
-          `Sorry, I couldn't process your voice message.\n\n` +
+          '❌ *Voice Message Error*\n\n' +
+          'Sorry, I couldn\'t process your voice message.\n\n' +
           `Error: ${error.message}`
         );
       } catch (sendError) {
@@ -121,9 +121,9 @@ class VoiceMessageHandler {
       if (data.startsWith('voice_confirm:')) {
         // Execute the command
         await this.mainBot.safeEditMessage(chatId, messageId,
-          `✅ *Executing voice command*\n\n` +
+          '✅ *Executing voice command*\n\n' +
           `📝 Command: "${transcribedText}"\n\n` +
-          `⏳ Sending to Claude...`
+          '⏳ Sending to Claude...'
         );
         
         // Remove from pending
@@ -141,9 +141,9 @@ class VoiceMessageHandler {
         
       } else if (data.startsWith('voice_edit:')) {
         await this.mainBot.safeEditMessage(chatId, messageId,
-          `✏️ *Edit voice command*\n\n` +
+          '✏️ *Edit voice command*\n\n' +
           `📝 **Original:** "${transcribedText}"\n\n` +
-          `💬 Send the corrected text message:`
+          '💬 Send the corrected text message:'
         );
         
         // Keep in pending for manual text input

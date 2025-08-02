@@ -189,7 +189,7 @@ describe('Real Bot Integration - /start Command', () => {
         '/start    ', // with extra spaces
         '/START', // uppercase
         '/ start', // space after slash
-        '/start\n\n', // with newlines
+        '/start\n\n' // with newlines
       ];
       
       for (const testCase of testCases) {

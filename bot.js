@@ -62,44 +62,44 @@ class StreamTelegramBot {
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
       {
-        id: "auto",
-        name: "Auto",
-        description: "Let Claude decide",
+        id: 'auto',
+        name: 'Auto',
+        description: 'Let Claude decide',
         level: 0,
-        icon: "🧠",
+        icon: '🧠',
         phrase: null
       },
       {
-        id: "think",
-        name: "Think",
-        description: "Basic reasoning",
+        id: 'think',
+        name: 'Think',
+        description: 'Basic reasoning',
         level: 1,
-        icon: "💭",
-        phrase: "think"
+        icon: '💭',
+        phrase: 'think'
       },
       {
-        id: "think_hard",
-        name: "Think Hard",
-        description: "Deeper analysis",
+        id: 'think_hard',
+        name: 'Think Hard',
+        description: 'Deeper analysis',
         level: 2,
-        icon: "🤔",
-        phrase: "think hard"
+        icon: '🤔',
+        phrase: 'think hard'
       },
       {
-        id: "think_harder",
-        name: "Think Harder",
-        description: "Extensive reasoning",
+        id: 'think_harder',
+        name: 'Think Harder',
+        description: 'Extensive reasoning',
         level: 3,
-        icon: "🧐",
-        phrase: "think harder"
+        icon: '🧐',
+        phrase: 'think harder'
       },
       {
-        id: "ultrathink",
-        name: "Ultrathink",
-        description: "Maximum computation",
+        id: 'ultrathink',
+        name: 'Ultrathink',
+        description: 'Maximum computation',
         level: 4,
-        icon: "🔥",
-        phrase: "ultrathink"
+        icon: '🔥',
+        phrase: 'ultrathink'
       }
     ];
     
@@ -138,7 +138,7 @@ class StreamTelegramBot {
             return; // Button handled, don't process as regular message
           }
 
-          console.log(`[COMPONENT] StreamTelegramBot.handleUserMessage - processing regular text message`);
+          console.log('[COMPONENT] StreamTelegramBot.handleUserMessage - processing regular text message');
           await this.handleUserMessage(msg);
         }
       } catch (error) {
@@ -190,34 +190,34 @@ class StreamTelegramBot {
         return; // Access denied message already sent
       }
       
-      const welcomeText = `🤖 *Claude Code Stream Bot*\n\n` +
-        `This bot uses Claude CLI with stream-json for seamless interaction.\n\n` +
-        `*Features:*\n` +
-        `• 📋 Live TodoWrite updates\n` +
-        `• 🔄 Session continuity with session IDs\n` +
-        `• 🛡️ Auto-skip permissions\n` +
-        `• 🎯 Real-time tool execution\n` +
-        `• 🧠 Thinking mode control (like Claudia)\n` +
-        `• 📸 Image analysis support with captions\n\n` +
-        `*Quick Buttons:*\n` +
-        `• 🛑 STOP - emergency stop\n` +
-        `• 📊 Status - session status\n` +
-        `• 📂 Projects - project selection\n` +
-        `• 🔄 New Session - start fresh\n` +
-        `• 📝 Sessions - session history\n` +
-        `• 🤖 Model - Claude model selection\n` +
-        `• 🧠 Thinking - thinking mode selection\n` +
-        `• 📍 Path - current directory\n` +
-        `• 🔍 Git Diff - view git changes\n\n` +
-        `*Claude 4 Model Commands:*\n` +
-        `• /sonnet - Claude 4 Sonnet (recommended)\n` +
-        `• /opus - Claude 4 Opus (maximum performance)\n` +
-        `• /model - show model selection\n\n` +
-        `*Git Commands:*\n` +
-        `• /diff - view git status and diff (includes untracked files) with mobile-friendly pagination\n\n` +
-        `*Thinking Mode Commands:*\n` +
-        `• /think - select thinking mode (Auto, Think, Think Hard, Think Harder, Ultrathink)\n\n` +
-        `Just send me a message to start!`;
+      const welcomeText = '🤖 *Claude Code Stream Bot*\n\n' +
+        'This bot uses Claude CLI with stream-json for seamless interaction.\n\n' +
+        '*Features:*\n' +
+        '• 📋 Live TodoWrite updates\n' +
+        '• 🔄 Session continuity with session IDs\n' +
+        '• 🛡️ Auto-skip permissions\n' +
+        '• 🎯 Real-time tool execution\n' +
+        '• 🧠 Thinking mode control (like Claudia)\n' +
+        '• 📸 Image analysis support with captions\n\n' +
+        '*Quick Buttons:*\n' +
+        '• 🛑 STOP - emergency stop\n' +
+        '• 📊 Status - session status\n' +
+        '• 📂 Projects - project selection\n' +
+        '• 🔄 New Session - start fresh\n' +
+        '• 📝 Sessions - session history\n' +
+        '• 🤖 Model - Claude model selection\n' +
+        '• 🧠 Thinking - thinking mode selection\n' +
+        '• 📍 Path - current directory\n' +
+        '• 🔍 Git Diff - view git changes\n\n' +
+        '*Claude 4 Model Commands:*\n' +
+        '• /sonnet - Claude 4 Sonnet (recommended)\n' +
+        '• /opus - Claude 4 Opus (maximum performance)\n' +
+        '• /model - show model selection\n\n' +
+        '*Git Commands:*\n' +
+        '• /diff - view git status and diff (includes untracked files) with mobile-friendly pagination\n\n' +
+        '*Thinking Mode Commands:*\n' +
+        '• /think - select thinking mode (Auto, Think, Think Hard, Think Harder, Ultrathink)\n\n' +
+        'Just send me a message to start!';
       
       await this.safeSendMessage(msg.chat.id, welcomeText, { 
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
@@ -444,13 +444,13 @@ class StreamTelegramBot {
    * Send session initialization message
    */
   async sendSessionInit(chatId, session) {
-    const text = `🚀 **New Session Started**\n\n` +
-      `Ready to process your requests with Claude CLI stream-json mode.\n\n` +
-      `🔄 Session continuity with ID tracking\n` +
-      `🛡️ Auto-permissions enabled\n` +
-      `📋 Live TodoWrite updates active\n\n` +
-      `💡 Use /end to close this session\n` +
-      `📚 Use /sessions to view history`;
+    const text = '🚀 **New Session Started**\n\n' +
+      'Ready to process your requests with Claude CLI stream-json mode.\n\n' +
+      '🔄 Session continuity with ID tracking\n' +
+      '🛡️ Auto-permissions enabled\n' +
+      '📋 Live TodoWrite updates active\n\n' +
+      '💡 Use /end to close this session\n' +
+      '📚 Use /sessions to view history';
     
     await this.safeSendMessage(chatId, text);
   }
@@ -465,11 +465,11 @@ class StreamTelegramBot {
     const parentDir = path.dirname(currentDir);
     
     await this.safeSendMessage(chatId,
-      `📁 *Current Working Directory*\n\n` +
+      '📁 *Current Working Directory*\n\n' +
       `🏷️ **Name:** ${dirName}\n` +
       `📂 **Parent:** ${parentDir}\n` +
       `🔗 **Full Path:** \`${currentDir}\`\n\n` +
-      `💡 Use /cd to change directory`,
+      '💡 Use /cd to change directory',
       { 
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
       }
@@ -490,10 +490,10 @@ class StreamTelegramBot {
     
     // If there's an active session, it will use the new model on next message
     const session = this.sessionManager.getUserSession(userId);
-    const sessionInfo = session ? `\n\n⚠️ *Current session:* will use new model on next message` : '';
+    const sessionInfo = session ? '\n\n⚠️ *Current session:* will use new model on next message' : '';
     
     await this.safeSendMessage(chatId,
-      `🤖 *Model Changed*\n\n` +
+      '🤖 *Model Changed*\n\n' +
       `📝 **Selected:** ${modelName} (\`${model}\`)\n` +
       `🔄 **Status:** active for new sessions${sessionInfo}`,
       { 
@@ -532,12 +532,12 @@ class StreamTelegramBot {
     };
 
     await this.safeSendMessage(chatId,
-      `🤖 *Claude 4 Model Selection*\n\n` +
+      '🤖 *Claude 4 Model Selection*\n\n' +
       `📊 **Current model:** ${this.getModelDisplayName(currentModel)}\n\n` +
-      `**Available Claude 4 models:**\n` +
-      `🤖 **Sonnet** - balance of speed and quality (recommended for most tasks)\n` +
-      `🧠 **Opus** - maximum performance for most complex tasks\n\n` +
-      `💡 Select model for new sessions:`,
+      '**Available Claude 4 models:**\n' +
+      '🤖 **Sonnet** - balance of speed and quality (recommended for most tasks)\n' +
+      '🧠 **Opus** - maximum performance for most complex tasks\n\n' +
+      '💡 Select model for new sessions:',
       {
         reply_markup: keyboard
       }
@@ -588,14 +588,14 @@ class StreamTelegramBot {
     ]);
 
     await this.safeSendMessage(chatId,
-      `🧠 *Thinking Mode Selection*\n\n` +
+      '🧠 *Thinking Mode Selection*\n\n' +
       `📊 **Current mode:** ${currentMode.icon} ${currentMode.name} ${this.getThinkingLevelIndicator(currentMode.level)}\n` +
       `📝 **Description:** ${currentMode.description}\n\n` +
-      `**Available thinking modes:**\n` +
+      '**Available thinking modes:**\n' +
       `${this.thinkingModes.map(mode =>
         `${mode.icon} **${mode.name}** ${this.getThinkingLevelIndicator(mode.level)} - ${mode.description}`
       ).join('\n')}\n\n` +
-      `💡 Select thinking mode for Claude:`,
+      '💡 Select thinking mode for Claude:',
       {
         reply_markup: keyboard
       }
@@ -734,12 +734,12 @@ class StreamTelegramBot {
     
     // Always notify for critical errors and exceptions
     if (text.includes('❌') && (
-        text.includes('Error') || 
+      text.includes('Error') || 
         text.includes('Exception') || 
         text.includes('Failed') ||
         text.includes('Crash') ||
         text.includes('Critical')
-      )) {
+    )) {
       return true;
     }
     
@@ -911,10 +911,10 @@ class StreamTelegramBot {
       
       // Update the message to show selection was made
       await this.safeEditMessage(chatId, messageId,
-        `✅ *Model Changed*\n\n` +
+        '✅ *Model Changed*\n\n' +
         `📝 **Selected:** ${modelNames[action]} (\`${action}\`)\n` +
-        `🔄 **Status:** active for new sessions\n\n` +
-        `💡 Use /model to change model`
+        '🔄 **Status:** active for new sessions\n\n' +
+        '💡 Use /model to change model'
       );
     }
   }
@@ -940,11 +940,11 @@ class StreamTelegramBot {
       
       // Update the message to show selection was made
       await this.safeEditMessage(chatId, messageId,
-        `✅ *Thinking Mode Changed*\n\n` +
+        '✅ *Thinking Mode Changed*\n\n' +
         `${selectedMode.icon} **Selected:** ${selectedMode.name} ${this.getThinkingLevelIndicator(selectedMode.level)}\n` +
         `📝 **Description:** ${selectedMode.description}\n` +
-        `🔄 **Status:** active for new messages\n\n` +
-        `💡 Use /think to change thinking mode`
+        '🔄 **Status:** active for new messages\n\n' +
+        '💡 Use /think to change thinking mode'
       );
     }
   }
