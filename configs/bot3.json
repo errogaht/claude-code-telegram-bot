@@ -1,0 +1,10 @@
+{
+  "botName": "Bot3",
+  "botToken": "8064508866:AAFgXEPdEENU3jhvBXCuue5cYQAUF1bxa2Q",
+  "defaultModel": "sonnet",
+  "logLevel": "info",
+  "generatedAt": "2025-08-02T10:50:00.000Z",
+  "nexaraApiKey": "nx-hWTnOS6BvX37XmeZvnvLXzYA",
+  "adminUserId": "296224393",
+  "workingDirectory": "/home/errogaht/aiprojects/claude-code-telegram-control"
+}

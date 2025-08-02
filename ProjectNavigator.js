@@ -143,9 +143,9 @@ class ProjectNavigator {
       // Update working directory
       this.options.workingDirectory = actualPath;
       
-      // IMPORTANT: Save the new working directory to config immediately
+      // IMPORTANT: Save the new project to config immediately
       // This ensures the bot remembers the selected project after restart
-      await this.saveWorkingDirectoryToConfig(actualPath);
+      await this.saveCurrentProjectToConfig(actualPath);
       
       const successMsg = 
         `✅ **Directory Changed**\n\n` +
@@ -185,25 +185,32 @@ class ProjectNavigator {
   }
 
   /**
-   * Save working directory to config file for persistence
+   * Save current project to config file for persistence
    */
-  async saveWorkingDirectoryToConfig(workingDirectory) {
-    // Delegate to the main bot's config save method
+  async saveCurrentProjectToConfig(projectPath) {
+    // Save the project as currentProject in config
     if (this.mainBot && this.mainBot.configFilePath) {
       try {
         const fs = require('fs');
         const configData = fs.readFileSync(this.mainBot.configFilePath, 'utf8');
         const config = JSON.parse(configData);
         
-        // Update the workingDirectory in config
-        config.workingDirectory = workingDirectory;
-        config.lastDirectoryUpdate = new Date().toISOString();
+        // Update the currentProject in config
+        config.currentProject = projectPath;
+        
+        // Initialize projectSessions if it doesn't exist
+        if (!config.projectSessions) {
+          config.projectSessions = {};
+        }
+        
+        // Note: We don't create a session here, just set the current project
+        // Sessions will be created/updated when the user actually starts using the project
         
         fs.writeFileSync(this.mainBot.configFilePath, JSON.stringify(config, null, 2));
         
-        console.log(`[ProjectNavigator] Saved working directory to config: ${workingDirectory}`);
+        console.log(`[ProjectNavigator] Saved current project to config: ${projectPath}`);
       } catch (error) {
-        console.error('[ProjectNavigator] Error saving working directory to config:', error.message);
+        console.error('[ProjectNavigator] Error saving current project to config:', error.message);
       }
     }
   }
