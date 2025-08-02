@@ -768,6 +768,46 @@ class StreamTelegramBot {
     return false;
   }
 
+  /**
+   * Extract meaningful error information from Telegram API errors
+   */
+  extractTelegramError(error) {
+    // Handle Telegram API errors specifically
+    if (error.code === 'ETELEGRAM' && error.response && error.response.body) {
+      const description = error.response.body.description || error.message;
+      const errorCode = error.response.body.error_code || 'Unknown';
+      
+      // Extract the actual error from description
+      let cleanError = description;
+      
+      // Parse HTML parsing errors
+      if (description.includes("can't parse entities")) {
+        const match = description.match(/Unsupported start tag "([^"]*)" at byte offset (\d+)/);
+        if (match) {
+          cleanError = `Invalid HTML tag "${match[1]}" at position ${match[2]}`;
+        } else {
+          cleanError = "HTML formatting error - invalid markup detected";
+        }
+      } else if (description.includes("Bad Request")) {
+        cleanError = description.replace("Bad Request: ", "");
+      }
+      
+      return {
+        type: 'TelegramAPI',
+        code: errorCode,
+        message: cleanError,
+        originalMessage: description
+      };
+    }
+    
+    // Handle other errors
+    return {
+      type: 'Unknown',
+      code: error.code || 'ERR_UNKNOWN',
+      message: error.message || 'Unknown error occurred',
+      originalMessage: error.message || 'Unknown error'
+    };
+  }
 
   /**
    * Safely send message with proper Telegram markdown sanitization
@@ -803,11 +843,31 @@ class StreamTelegramBot {
       }
       
     } catch (error) {
-      console.error('HTML message failed:', error);
-      // Fallback to plain text (no formatting)
-      return await this.bot.sendMessage(chatId, 'Message formatting error occurred.', {
-        disable_notification: true
-      });
+      const parsedError = this.extractTelegramError(error);
+      console.error(`[SafeSendMessage] ${parsedError.type} Error:`, parsedError.message);
+      
+      // Throw a clean error for calling code to handle
+      const cleanError = new Error(`Message send failed: ${parsedError.message}`);
+      cleanError.telegramError = parsedError;
+      
+      // Send user-friendly error message to chat
+      try {
+        const userMessage = `❌ **Message Error**\n\n` +
+          `💬 **Issue:** ${parsedError.message}\n` +
+          `🔧 **Code:** ${parsedError.code}\n\n` +
+          `💡 This usually means there's invalid formatting in the message.`;
+          
+        return await this.bot.sendMessage(chatId, userMessage, {
+          parse_mode: 'HTML',
+          disable_notification: true
+        });
+      } catch (fallbackError) {
+        // If even the error message fails, send minimal text
+        console.error('[SafeSendMessage] Fallback error message also failed:', fallbackError);
+        return await this.bot.sendMessage(chatId, 'Unable to send message due to formatting error.', {
+          disable_notification: true
+        });
+      }
     }
   }
 
@@ -836,18 +896,37 @@ class StreamTelegramBot {
       await this.bot.editMessageText(htmlText, messageOptions);
       
     } catch (error) {
-      console.error('HTML edit message failed:', error);
+      const parsedError = this.extractTelegramError(error);
+      console.error(`[SafeEditMessage] ${parsedError.type} Error:`, parsedError.message);
       
-      // Fallback: try to edit with plain text (no formatting)
+      // Throw a clean error for calling code to handle
+      const cleanError = new Error(`Message edit failed: ${parsedError.message}`);
+      cleanError.telegramError = parsedError;
+      
+      // Try to edit with user-friendly error message
       try {
-        await this.bot.editMessageText('Message formatting error occurred.', {
+        const userMessage = `❌ **Edit Error**\n\n` +
+          `💬 **Issue:** ${parsedError.message}\n` +
+          `🔧 **Code:** ${parsedError.code}\n\n` +
+          `💡 This usually means there's invalid formatting in the message.`;
+          
+        await this.bot.editMessageText(userMessage, {
           chat_id: chatId,
           message_id: messageId,
           parse_mode: 'HTML'
         });
       } catch (fallbackError) {
-        console.error('Edit message fallback also failed:', fallbackError);
-        // If editing fails completely, we can't do much more
+        // If even the error message fails, try minimal text
+        console.error('[SafeEditMessage] Fallback error edit also failed:', fallbackError);
+        try {
+          await this.bot.editMessageText('Unable to edit message due to formatting error.', {
+            chat_id: chatId,
+            message_id: messageId
+          });
+        } catch (finalError) {
+          console.error('[SafeEditMessage] Final fallback also failed:', finalError);
+          // If editing fails completely, we can't do much more
+        }
       }
     }
   }
