@@ -840,9 +840,9 @@ class StreamTelegramBot {
   sanitizeHtmlContent(text) {
     if (!text || typeof text !== 'string') return '';
     
-    // Find all malformed HTML-like patterns that could cause Telegram API errors
-    // Pattern: < followed by quote/apostrophe (not a valid HTML tag)
-    const malformedPatterns = /<['"`][^>]*['"`]?(?![>])/g;
+    // Find malformed HTML-like patterns that could cause Telegram API errors
+    // Pattern: < followed immediately by quote/apostrophe (these are never valid HTML tags)
+    const malformedPatterns = /<['"`][^<>]*(?![>])/g;
     
     return text.replace(malformedPatterns, (match) => {
       // Escape the malformed pattern by replacing < with &lt;
