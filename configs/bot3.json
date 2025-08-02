@@ -8,5 +8,12 @@
   "adminUserId": "296224393",
   "workingDirectory": "/home/errogaht/aiprojects/claude-code-telegram-control",
   "currentProject": "/home/errogaht/aiprojects/claude-code-telegram-control",
-  "projectSessions": {}
+  "projectSessions": {
+    "/home/errogaht/aiprojects/claude-code-telegram-control": {
+      "userId": "296224393",
+      "sessionId": "cc9b3468-db83-4e6e-9e8e-411baec10b7e",
+      "timestamp": "2025-08-02T12:18:14.876Z",
+      "model": "sonnet"
+    }
+  }
 }
