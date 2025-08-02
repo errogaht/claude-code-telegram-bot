@@ -48,7 +48,6 @@ class GitManager {
           'This directory is not a git repository.\n' +
           'Use `📂 Projects` to navigate to a git project.',
           { 
-            parse_mode: 'HTML',
             reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
           }
         );
@@ -77,7 +76,6 @@ class GitManager {
       await this.mainBot.safeSendMessage(chatId, 
         `❌ **Git Manager Error**\n\n\`${error.message}\``,
         { 
-          parse_mode: 'HTML',
           reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
         }
       );
@@ -322,7 +320,6 @@ class GitManager {
       .replace(/`([^`]+)`/g, '<code>$1</code>'); // Convert `text` to <code>text</code>
     
     await this.mainBot.safeSendMessage(chatId, htmlText, {
-      parse_mode: 'HTML',
       reply_markup: keyboard
     });
   }
@@ -416,7 +413,6 @@ class GitManager {
           'No other branches available to switch to.\n' +
           `Currently on: \`${branchInfo.currentBranch}\``,
           { 
-            parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [[
                 { text: '🆕 Create New Branch', callback_data: 'git:branch:create' },
@@ -464,7 +460,6 @@ class GitManager {
       ]);
 
       await this.mainBot.safeSendMessage(chatId, text, {
-        parse_mode: 'HTML',
         reply_markup: keyboard
       });
 
@@ -473,7 +468,6 @@ class GitManager {
       await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Switch Error**\n\n\`${error.message}\``,
         { 
-          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
               { text: '🔙 Back to Branches', callback_data: 'git:branch:list' }
@@ -507,7 +501,6 @@ class GitManager {
           '• Stash your changes (coming soon)\n' +
           '• Force switch (will lose changes)',
           { 
-            parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
                 [
@@ -532,7 +525,6 @@ class GitManager {
       await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Switch Error**\n\n\`${error.message}\``,
         { 
-          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
               { text: '🔙 Back to Branches', callback_data: 'git:branch:list' }
@@ -578,7 +570,6 @@ class GitManager {
           '• Check branch status\n' +
           '• Return to git overview',
           { 
-            parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
                 [
@@ -607,7 +598,6 @@ class GitManager {
         '• There are conflicting changes\n' +
         '• Git repository is in an invalid state',
         { 
-          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
               { text: '🔙 Back to Branches', callback_data: 'git:branch:list' }
@@ -681,7 +671,6 @@ class GitManager {
       ]);
       
       await this.mainBot.safeSendMessage(chatId, text, {
-        parse_mode: 'HTML',
         reply_markup: keyboard
       });
       
@@ -690,7 +679,6 @@ class GitManager {
       await this.mainBot.safeSendMessage(chatId, 
         `❌ **Branch Management Error**\n\n\`${error.message}\``,
         { 
-          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
               { text: '🔙 Back to Git', callback_data: 'git:overview' }
@@ -712,7 +700,6 @@ class GitManager {
       `Unstaged: ${this.gitState.unstagedFiles.length} files\n` +
       `Untracked: ${this.gitState.untrackedFiles.length} files`,
       { 
-        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[
             { text: '🔙 Back to Git', callback_data: 'git:overview' }
@@ -731,7 +718,6 @@ class GitManager {
       'Commit features coming in Phase 4!\n\n' +
       `Staged files: ${this.gitState.stagedFiles.length}`,
       { 
-        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[
             { text: '🔙 Back to Git', callback_data: 'git:overview' }
@@ -820,7 +806,6 @@ class GitManager {
     keyboard.inline_keyboard.push(navRow);
     
     await this.mainBot.safeSendMessage(chatId, text, {
-      parse_mode: 'HTML',
       reply_markup: keyboard
     });
   }
@@ -889,8 +874,7 @@ class GitManager {
 
     } catch (error) {
       await this.mainBot.safeSendMessage(chatId,
-        `❌ **Error reading diff for ${path.basename(filename)}**\n\n\`${error.message}\``,
-        { parse_mode: 'HTML' }
+        `❌ **Error reading diff for ${path.basename(filename)}**\n\n\`${error.message}\``
       );
     }
   }
@@ -1128,7 +1112,6 @@ class GitManager {
     let parseMode = 'HTML';
     try {
       await this.mainBot.safeSendMessage(chatId, chunk, {
-        parse_mode: parseMode,
         reply_markup: keyboard
       });
     } catch (error) {
@@ -1287,7 +1270,6 @@ class GitManager {
         text += '💡 Choose another view:';
         
         await this.mainBot.safeSendMessage(chatId, text, {
-          parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
               { text: '🏠 Overview', callback_data: 'git:overview' },
@@ -1300,8 +1282,7 @@ class GitManager {
     } catch (error) {
       console.error('[Git Callback] Error:', error);
       await this.mainBot.safeSendMessage(chatId, 
-        `❌ Error: ${error.message}`,
-        { parse_mode: 'HTML' }
+        `❌ Error: ${error.message}`
       );
     }
   }
@@ -1382,7 +1363,6 @@ class GitManager {
       '• Create and switch to new branch\n' +
       '• Handle naming conflicts',
       { 
-        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: [[
             { text: '🔙 Back to Branches', callback_data: 'git:branch:list' }

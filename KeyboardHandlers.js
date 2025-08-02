@@ -88,7 +88,6 @@ class KeyboardHandlers {
         console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
         const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
         await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
-          parse_mode: 'HTML',
           reply_markup: this.createReplyKeyboard()
         });
         return true;

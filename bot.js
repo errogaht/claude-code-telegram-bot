@@ -219,8 +219,7 @@ class StreamTelegramBot {
         `• /think - select thinking mode (Auto, Think, Think Hard, Think Harder, Ultrathink)\n\n` +
         `Just send me a message to start!`;
       
-      await this.bot.sendMessage(msg.chat.id, welcomeText, { 
-        parse_mode: 'HTML',
+      await this.safeSendMessage(msg.chat.id, welcomeText, { 
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
       });
     });
@@ -297,20 +296,17 @@ class StreamTelegramBot {
           const errorMessage = typeof errorBody === 'string' ? errorBody : errorBody?.description || '';
           
           if (errorMessage.includes('BUTTON_DATA_INVALID')) {
-            await this.bot.sendMessage(chatId, 
-              '❌ *Button data error*\n\nProject list expired. Use /cd to refresh.',
-              { parse_mode: 'HTML' }
+            await this.safeSendMessage(chatId, 
+              '❌ *Button data error*\n\nProject list expired. Use /cd to refresh.'
             );
           } else {
-            await this.bot.sendMessage(chatId, 
-              `❌ *Telegram API Error*\n\n${error.message}`,
-              { parse_mode: 'HTML' }
+            await this.safeSendMessage(chatId, 
+              `❌ *Telegram API Error*\n\n${error.message}`
             );
           }
         } else {
-          await this.bot.sendMessage(chatId, 
-            `❌ *Error*\n\n${error.message}`,
-            { parse_mode: 'HTML' }
+          await this.safeSendMessage(chatId, 
+            `❌ *Error*\n\n${error.message}`
           );
         }
         
@@ -420,7 +416,7 @@ class StreamTelegramBot {
       
       // Check if user is admin
       if (!this.authorizedUsers.has(userId)) {
-        await this.bot.sendMessage(msg.chat.id, '❌ Access denied. Only administrators can restart the bot.');
+        await this.safeSendMessage(msg.chat.id, '❌ Access denied. Only administrators can restart the bot.');
         return;
       }
       
@@ -456,7 +452,7 @@ class StreamTelegramBot {
       `💡 Use /end to close this session\n` +
       `📚 Use /sessions to view history`;
     
-    await this.safeSendMessage(chatId, text, { parse_mode: 'HTML' });
+    await this.safeSendMessage(chatId, text);
   }
 
 
@@ -468,14 +464,13 @@ class StreamTelegramBot {
     const dirName = path.basename(currentDir);
     const parentDir = path.dirname(currentDir);
     
-    await this.bot.sendMessage(chatId,
+    await this.safeSendMessage(chatId,
       `📁 *Current Working Directory*\n\n` +
       `🏷️ **Name:** ${dirName}\n` +
       `📂 **Parent:** ${parentDir}\n` +
       `🔗 **Full Path:** \`${currentDir}\`\n\n` +
       `💡 Use /cd to change directory`,
       { 
-        parse_mode: 'HTML',
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup()
       }
     );
@@ -536,7 +531,7 @@ class StreamTelegramBot {
       ]
     };
 
-    await this.bot.sendMessage(chatId,
+    await this.safeSendMessage(chatId,
       `🤖 *Claude 4 Model Selection*\n\n` +
       `📊 **Current model:** ${this.getModelDisplayName(currentModel)}\n\n` +
       `**Available Claude 4 models:**\n` +
@@ -544,8 +539,7 @@ class StreamTelegramBot {
       `🧠 **Opus** - maximum performance for most complex tasks\n\n` +
       `💡 Select model for new sessions:`,
       {
-        reply_markup: keyboard,
-        parse_mode: 'HTML'
+        reply_markup: keyboard
       }
     );
   }
@@ -593,7 +587,7 @@ class StreamTelegramBot {
       { text: '🔄 Refresh', callback_data: 'thinking:refresh' }
     ]);
 
-    await this.bot.sendMessage(chatId,
+    await this.safeSendMessage(chatId,
       `🧠 *Thinking Mode Selection*\n\n` +
       `📊 **Current mode:** ${currentMode.icon} ${currentMode.name} ${this.getThinkingLevelIndicator(currentMode.level)}\n` +
       `📝 **Description:** ${currentMode.description}\n\n` +
@@ -603,8 +597,7 @@ class StreamTelegramBot {
       ).join('\n')}\n\n` +
       `💡 Select thinking mode for Claude:`,
       {
-        reply_markup: keyboard,
-        parse_mode: 'HTML'
+        reply_markup: keyboard
       }
     );
   }
@@ -763,6 +756,47 @@ class StreamTelegramBot {
       await this.bot.sendMessage(chatId, 'Message formatting error occurred.', {
         disable_notification: true
       });
+    }
+  }
+
+  /**
+   * Safely edit message with proper Markdown to HTML conversion
+   */
+  async safeEditMessage(chatId, messageId, text, options = {}) {
+    try {
+      let htmlText = text;
+      
+      // Convert markdown to HTML if text doesn't already contain HTML tags
+      const containsHtml = /<[^>]+>/.test(text);
+      if (!containsHtml) {
+        const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+        const converter = new MarkdownHtmlConverter();
+        htmlText = converter.convert(text);
+      }
+      
+      const messageOptions = {
+        ...options,
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'HTML'  // ALWAYS HTML - no exceptions
+      };
+      
+      await this.bot.editMessageText(htmlText, messageOptions);
+      
+    } catch (error) {
+      console.error('HTML edit message failed:', error);
+      
+      // Fallback: try to edit with plain text (no formatting)
+      try {
+        await this.bot.editMessageText('Message formatting error occurred.', {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: 'HTML'
+        });
+      } catch (fallbackError) {
+        console.error('Edit message fallback also failed:', fallbackError);
+        // If editing fails completely, we can't do much more
+      }
     }
   }
 
@@ -950,14 +984,18 @@ class StreamTelegramBot {
       const configData = fs.readFileSync(this.configFilePath, 'utf8');
       const config = JSON.parse(configData);
       
+      // IMPORTANT: Project selection always takes precedence over session directory
+      // This ensures user's project selection persists across restarts
+      if (config.workingDirectory) {
+        this.options.workingDirectory = config.workingDirectory;
+        console.log(`[Startup] Restored working directory from config: ${config.workingDirectory}`);
+      }
+      
       if (config.lastSession && config.lastSession.sessionId) {
         const session = config.lastSession;
         console.log(`[Session] Found last session ${session.sessionId.slice(-8)} for user ${session.userId}`);
         
-        // Update bot options from saved session
-        if (session.workingDirectory) {
-          this.options.workingDirectory = session.workingDirectory;
-        }
+        // Update bot options from saved session (but not workingDirectory - project selection wins)
         if (session.model) {
           this.options.model = session.model;
         }
@@ -966,7 +1004,7 @@ class StreamTelegramBot {
           userId: parseInt(session.userId),
           sessionId: session.sessionId,
           timestamp: session.timestamp,
-          workingDirectory: session.workingDirectory,
+          workingDirectory: this.options.workingDirectory, // Use current workingDirectory (from project selection)
           model: session.model
         };
       }
@@ -1060,11 +1098,10 @@ class StreamTelegramBot {
     
     // Send unauthorized message asynchronously
     setImmediate(() => {
-      this.bot.sendMessage(chatId, 
+      this.safeSendMessage(chatId, 
         '🚫 *Access Denied*\n\n' +
         'This bot is private and only available to authorized users.\n\n' +
-        '👤 Your User ID: `' + userId + '`',
-        { parse_mode: 'HTML' }
+        '👤 Your User ID: `' + userId + '`'
       ).catch(error => {
         console.error('Error sending unauthorized message:', error);
       });
@@ -1081,11 +1118,10 @@ class StreamTelegramBot {
       console.log(`[Admin] User ${userId} initiated bot restart`);
       
       // Send restart confirmation message
-      await this.bot.sendMessage(chatId, 
+      await this.safeSendMessage(chatId, 
         '🔄 **Bot Restart Initiated**\n\n' +
         `⏳ Restarting ${this.botInstanceName} process...\n` +
-        '🚀 Bot will be back online shortly!',
-        { parse_mode: 'HTML' }
+        '🚀 Bot will be back online shortly!'
       );
       
       // Use PM2 to restart the bot
@@ -1098,19 +1134,17 @@ class StreamTelegramBot {
       console.log(`[Admin] PM2 restart output: ${result.stdout}`);
       
       // The process will be killed by PM2, so this message might not send
-      await this.bot.sendMessage(chatId, 
+      await this.safeSendMessage(chatId, 
         '✅ **Restart Command Sent**\n\n' +
-        '🔄 PM2 is restarting the bot process...',
-        { parse_mode: 'HTML' }
+        '🔄 PM2 is restarting the bot process...'
       );
       
     } catch (error) {
       console.error('[Admin] Error restarting bot:', error);
-      await this.bot.sendMessage(chatId, 
+      await this.safeSendMessage(chatId, 
         '❌ **Restart Failed**\n\n' +
         `Error: \`${error.message}\`\n\n` +
-        `💡 Try using \`pm2 restart ${this.botInstanceName}\` manually.`,
-        { parse_mode: 'HTML' }
+        `💡 Try using \`pm2 restart ${this.botInstanceName}\` manually.`
       );
     }
   }
@@ -1151,8 +1185,7 @@ class StreamTelegramBot {
     // Check if previous request is still processing
     if (session.processor.isActive()) {
       console.log(`[ProcessUserMessage] Previous request still processing for user ${userId}`);
-      await this.bot.sendMessage(chatId, '⏳ *Processing previous request...*\nPlease wait or use /cancel', 
-        { parse_mode: 'HTML' });
+      await this.safeSendMessage(chatId, '⏳ *Processing previous request...*\nPlease wait or use /cancel');
       return;
     }
 

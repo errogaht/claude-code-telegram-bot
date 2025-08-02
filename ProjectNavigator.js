@@ -63,8 +63,7 @@ class ProjectNavigator {
       await this.mainBot.safeSendMessage(chatId, 
         `📁 **Current Directory**\n${this.options.workingDirectory}\n\n` +
         `❌ No Claude projects found\n` +
-        `💡 Open projects in Claude Code first`,
-        { parse_mode: 'HTML' }
+        `💡 Open projects in Claude Code first`
       );
       return;
     }
@@ -101,7 +100,7 @@ class ProjectNavigator {
       `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
       `📋 **Select Claude Project:**\n` +
       `(Showing ${Math.min(projects.length, 15)} projects)`,
-      { reply_markup: keyboard, parse_mode: 'HTML' }
+      { reply_markup: keyboard }
     );
   }
 
@@ -122,10 +121,7 @@ class ProjectNavigator {
       if (!fs.existsSync(actualPath)) {
         const errorMsg = `❌ Directory not found: ${actualPath}`;
         if (messageId) {
-          await this.bot.editMessageText(errorMsg, { 
-            chat_id: chatId, 
-            message_id: messageId 
-          });
+          await this.mainBot.safeEditMessage(chatId, messageId, errorMsg);
         } else {
           await this.mainBot.safeSendMessage(chatId, errorMsg);
         }
@@ -137,10 +133,7 @@ class ProjectNavigator {
       if (!stats.isDirectory()) {
         const errorMsg = `❌ Not a directory: ${actualPath}`;
         if (messageId) {
-          await this.bot.editMessageText(errorMsg, { 
-            chat_id: chatId, 
-            message_id: messageId 
-          });
+          await this.mainBot.safeEditMessage(chatId, messageId, errorMsg);
         } else {
           await this.mainBot.safeSendMessage(chatId, errorMsg);
         }
@@ -150,6 +143,10 @@ class ProjectNavigator {
       // Update working directory
       this.options.workingDirectory = actualPath;
       
+      // IMPORTANT: Save the new working directory to config immediately
+      // This ensures the bot remembers the selected project after restart
+      await this.saveWorkingDirectoryToConfig(actualPath);
+      
       const successMsg = 
         `✅ **Directory Changed**\n\n` +
         `📁 **New Directory:**\n\`${actualPath}\`\n\n` +
@@ -157,13 +154,9 @@ class ProjectNavigator {
         `🔄 Use /new to start fresh session here`;
       
       if (messageId) {
-        await this.bot.editMessageText(successMsg, { 
-          chat_id: chatId, 
-          message_id: messageId,
-          parse_mode: 'HTML'
-        });
+        await this.mainBot.safeEditMessage(chatId, messageId, successMsg);
       } else {
-        await this.mainBot.safeSendMessage(chatId, successMsg, { parse_mode: 'HTML' });
+        await this.mainBot.safeSendMessage(chatId, successMsg);
       }
       
       console.log(`[ProjectNavigator] Directory changed to: ${actualPath}`);
@@ -171,10 +164,7 @@ class ProjectNavigator {
     } catch (error) {
       const errorMsg = `❌ Error: ${error.message}`;
       if (messageId) {
-        await this.bot.editMessageText(errorMsg, { 
-          chat_id: chatId, 
-          message_id: messageId 
-        });
+        await this.mainBot.safeEditMessage(chatId, messageId, errorMsg);
       } else {
         await this.mainBot.safeSendMessage(chatId, errorMsg);
       }
@@ -191,6 +181,30 @@ class ProjectNavigator {
       await this.showProjectSelection(chatId);
     } else {
       await this.handleDirectoryChange(dirAction, chatId, messageId);
+    }
+  }
+
+  /**
+   * Save working directory to config file for persistence
+   */
+  async saveWorkingDirectoryToConfig(workingDirectory) {
+    // Delegate to the main bot's config save method
+    if (this.mainBot && this.mainBot.configFilePath) {
+      try {
+        const fs = require('fs');
+        const configData = fs.readFileSync(this.mainBot.configFilePath, 'utf8');
+        const config = JSON.parse(configData);
+        
+        // Update the workingDirectory in config
+        config.workingDirectory = workingDirectory;
+        config.lastDirectoryUpdate = new Date().toISOString();
+        
+        fs.writeFileSync(this.mainBot.configFilePath, JSON.stringify(config, null, 2));
+        
+        console.log(`[ProjectNavigator] Saved working directory to config: ${workingDirectory}`);
+      } catch (error) {
+        console.error('[ProjectNavigator] Error saving working directory to config:', error.message);
+      }
     }
   }
 
