@@ -19,6 +19,8 @@ class MessageSplitter {
     
     console.log(`📨 Splitting long message (${text.length} chars) into ${chunks.length} parts`);
     
+    let firstMessage = null;
+    
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       
@@ -36,7 +38,12 @@ class MessageSplitter {
           chunkOptions.disable_notification = true;
         }
         
-        await bot.sendMessage(chatId, finalChunk, chunkOptions);
+        const sentMessage = await bot.sendMessage(chatId, finalChunk, chunkOptions);
+        
+        // Store the first message to return (needed for callbacks with keyboards)
+        if (i === 0) {
+          firstMessage = sentMessage;
+        }
         
         // Small delay between parts to avoid rate limiting
         if (i < chunks.length - 1) {
@@ -67,6 +74,9 @@ class MessageSplitter {
         }
       }
     }
+    
+    // Return the first message (important for callbacks with keyboards)
+    return firstMessage;
   }
 
   /**

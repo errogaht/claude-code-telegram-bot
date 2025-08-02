@@ -68,12 +68,16 @@ class VoiceMessageHandler {
         }
       );
       
-      // Store pending command with new message ID
-      this.pendingCommands.set(confirmMsg.message_id, {
-        transcribedText,
-        userId,
-        chatId
-      });
+      // Store pending command with new message ID (with safety check)
+      if (confirmMsg && confirmMsg.message_id) {
+        this.pendingCommands.set(confirmMsg.message_id, {
+          transcribedText,
+          userId,
+          chatId
+        });
+      } else {
+        console.error('[Voice] Warning: confirmMsg or message_id is undefined, cannot store pending command');
+      }
       
     } catch (error) {
       console.error('[Voice] Processing error:', error);

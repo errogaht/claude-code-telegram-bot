@@ -643,23 +643,75 @@ class StreamTelegramBot {
   }
 
   /**
-   * Store user's model preference
+   * Store user's model preference for current project
    */
   storeUserModel(userId, model) {
-    if (!this.userPreferences) {
-      this.userPreferences = new Map();
+    if (!this.configFilePath) {
+      console.warn('[Bot] No config file path provided, cannot store user model');
+      return;
     }
-    this.userPreferences.set(`${userId}_model`, model);
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      // Initialize projectSessions if it doesn't exist
+      if (!config.projectSessions) {
+        config.projectSessions = {};
+      }
+      
+      const currentProject = this.options.workingDirectory;
+      
+      // Update or create project session with new model preference
+      if (!config.projectSessions[currentProject]) {
+        config.projectSessions[currentProject] = {
+          userId: userId.toString(),
+          model: model,
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        config.projectSessions[currentProject].model = model;
+        config.projectSessions[currentProject].timestamp = new Date().toISOString();
+      }
+      
+      // Write back to file
+      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      
+      console.log(`[Bot] Stored user model ${model} for project ${currentProject}`);
+    } catch (error) {
+      console.error('[Bot] Error storing user model:', error.message);
+    }
   }
 
   /**
-   * Get user's model preference
+   * Get user's model preference for current project
    */
   getUserModel(userId) {
-    if (!this.userPreferences) {
+    if (!this.configFilePath) {
       return null;
     }
-    return this.userPreferences.get(`${userId}_model`);
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      const currentProject = this.options.workingDirectory;
+      
+      // Get model preference from project-specific session
+      if (config.projectSessions && config.projectSessions[currentProject]) {
+        const projectSession = config.projectSessions[currentProject];
+        if (projectSession.userId === userId.toString() && projectSession.model) {
+          return projectSession.model;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[Bot] Error getting user model:', error.message);
+      return null;
+    }
   }
 
   /**
@@ -745,15 +797,15 @@ class StreamTelegramBot {
       
       // Use existing MessageSplitter (already HTML-aware!)
       if (htmlText.length <= 4096) {
-        await this.bot.sendMessage(chatId, htmlText, messageOptions);
+        return await this.bot.sendMessage(chatId, htmlText, messageOptions);
       } else {
-        await this.messageSplitter.sendLongMessage(this.bot, chatId, htmlText, messageOptions);
+        return await this.messageSplitter.sendLongMessage(this.bot, chatId, htmlText, messageOptions);
       }
       
     } catch (error) {
       console.error('HTML message failed:', error);
       // Fallback to plain text (no formatting)
-      await this.bot.sendMessage(chatId, 'Message formatting error occurred.', {
+      return await this.bot.sendMessage(chatId, 'Message formatting error occurred.', {
         disable_notification: true
       });
     }
@@ -858,16 +910,11 @@ class StreamTelegramBot {
       await this.setModel(chatId, action, modelNames[action]);
       
       // Update the message to show selection was made
-      await this.bot.editMessageText(
+      await this.safeEditMessage(chatId, messageId,
         `✅ *Model Changed*\n\n` +
         `📝 **Selected:** ${modelNames[action]} (\`${action}\`)\n` +
         `🔄 **Status:** active for new sessions\n\n` +
-        `💡 Use /model to change model`,
-        {
-          chat_id: chatId,
-          message_id: messageId,
-          parse_mode: 'HTML'
-        }
+        `💡 Use /model to change model`
       );
     }
   }
@@ -892,17 +939,12 @@ class StreamTelegramBot {
       this.storeUserThinkingMode(userId, action);
       
       // Update the message to show selection was made
-      await this.bot.editMessageText(
+      await this.safeEditMessage(chatId, messageId,
         `✅ *Thinking Mode Changed*\n\n` +
         `${selectedMode.icon} **Selected:** ${selectedMode.name} ${this.getThinkingLevelIndicator(selectedMode.level)}\n` +
         `📝 **Description:** ${selectedMode.description}\n` +
         `🔄 **Status:** active for new messages\n\n` +
-        `💡 Use /think to change thinking mode`,
-        {
-          chat_id: chatId,
-          message_id: messageId,
-          parse_mode: 'HTML'
-        }
+        `💡 Use /think to change thinking mode`
       );
     }
   }
@@ -984,29 +1026,34 @@ class StreamTelegramBot {
       const configData = fs.readFileSync(this.configFilePath, 'utf8');
       const config = JSON.parse(configData);
       
-      // IMPORTANT: Project selection always takes precedence over session directory
-      // This ensures user's project selection persists across restarts
-      if (config.workingDirectory) {
-        this.options.workingDirectory = config.workingDirectory;
-        console.log(`[Startup] Restored working directory from config: ${config.workingDirectory}`);
+      // Set working directory from currentProject
+      if (config.currentProject) {
+        this.options.workingDirectory = config.currentProject;
+        console.log(`[Startup] Restored current project: ${config.currentProject}`);
       }
       
-      if (config.lastSession && config.lastSession.sessionId) {
-        const session = config.lastSession;
-        console.log(`[Session] Found last session ${session.sessionId.slice(-8)} for user ${session.userId}`);
+      // Get project-specific session
+      if (config.projectSessions && config.currentProject) {
+        const projectSession = config.projectSessions[config.currentProject];
         
-        // Update bot options from saved session (but not workingDirectory - project selection wins)
-        if (session.model) {
-          this.options.model = session.model;
+        if (projectSession && projectSession.sessionId) {
+          console.log(`[Session] Found session ${projectSession.sessionId.slice(-8)} for project ${config.currentProject}`);
+          
+          // Update bot options from project session
+          if (projectSession.model) {
+            this.options.model = projectSession.model;
+          }
+          
+          return {
+            userId: parseInt(projectSession.userId),
+            sessionId: projectSession.sessionId,
+            timestamp: projectSession.timestamp,
+            workingDirectory: config.currentProject,
+            model: projectSession.model
+          };
+        } else {
+          console.log(`[Session] No session found for current project: ${config.currentProject}`);
         }
-        
-        return {
-          userId: parseInt(session.userId),
-          sessionId: session.sessionId,
-          timestamp: session.timestamp,
-          workingDirectory: this.options.workingDirectory, // Use current workingDirectory (from project selection)
-          model: session.model
-        };
       }
       
       return null;

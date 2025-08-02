@@ -194,6 +194,52 @@ describe('VoiceMessageHandler', () => {
       });
     });
 
+    test('should handle safeSendMessage returning undefined gracefully', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const voiceMsg = createMockVoiceMessage();
+      
+      // Create handler with mainBot that has safeSendMessage returning undefined
+      const mockMainBot = {
+        safeSendMessage: jest.fn().mockResolvedValue(undefined)
+      };
+      const handlerWithMainBot = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator, mockMainBot);
+
+      await handlerWithMainBot.handleVoiceMessage(voiceMsg);
+
+      // Should log warning about undefined message
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[Voice] Warning: confirmMsg or message_id is undefined, cannot store pending command'
+      );
+      
+      // Should not crash and pendingCommands should remain empty
+      expect(handlerWithMainBot.pendingCommands.size).toBe(0);
+      
+      consoleErrorSpy.mockRestore();
+    });
+
+    test('should handle safeSendMessage returning object without message_id', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
+      const voiceMsg = createMockVoiceMessage();
+      
+      // Create handler with mainBot that returns object without message_id
+      const mockMainBot = {
+        safeSendMessage: jest.fn().mockResolvedValue({ some_other_field: 'value' })
+      };
+      const handlerWithMainBot = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator, mockMainBot);
+
+      await handlerWithMainBot.handleVoiceMessage(voiceMsg);
+
+      // Should log warning about undefined message_id
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[Voice] Warning: confirmMsg or message_id is undefined, cannot store pending command'
+      );
+      
+      // Should not crash and pendingCommands should remain empty
+      expect(handlerWithMainBot.pendingCommands.size).toBe(0);
+      
+      consoleErrorSpy.mockRestore();
+    });
+
     test('should handle file download error', async () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       mockAxios.get.mockRejectedValueOnce(new Error('Download failed'));

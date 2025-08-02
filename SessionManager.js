@@ -263,7 +263,7 @@ class SessionManager {
   }
 
   /**
-   * Save current session to config file
+   * Save current session to config file (project-specific)
    */
   async saveCurrentSessionToConfig(userId, sessionId) {
     if (!this.configFilePath) {
@@ -277,21 +277,27 @@ class SessionManager {
       const configData = fs.readFileSync(this.configFilePath, 'utf8');
       const config = JSON.parse(configData);
       
-      // Save current session info
-      if (!config.lastSession) {
-        config.lastSession = {};
+      // Initialize projectSessions if it doesn't exist
+      if (!config.projectSessions) {
+        config.projectSessions = {};
       }
       
-      config.lastSession.userId = userId.toString();
-      config.lastSession.sessionId = sessionId;
-      config.lastSession.timestamp = new Date().toISOString();
-      config.lastSession.workingDirectory = this.options.workingDirectory;
-      config.lastSession.model = this.options.model;
+      // Save session info for current project
+      const currentProject = this.options.workingDirectory;
+      config.projectSessions[currentProject] = {
+        userId: userId.toString(),
+        sessionId: sessionId,
+        timestamp: new Date().toISOString(),
+        model: this.options.model
+      };
+      
+      // Also update currentProject
+      config.currentProject = currentProject;
       
       // Write back to file
       fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
       
-      console.log(`[Session] Saved current session ${sessionId.slice(-8)} to config`);
+      console.log(`[Session] Saved session ${sessionId.slice(-8)} for project ${currentProject}`);
     } catch (error) {
       console.error('[Session] Error saving session to config:', error.message);
     }
@@ -349,11 +355,33 @@ class SessionManager {
   }
 
   /**
-   * Get user's preferred model (placeholder - needs implementation)
+   * Get user's preferred model for current project
    */
   getUserModel(userId) {
-    // TODO: Implement user model preferences
-    return null;
+    if (!this.configFilePath) {
+      return null;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      const currentProject = this.options.workingDirectory;
+      
+      // Get model preference from project-specific session
+      if (config.projectSessions && config.projectSessions[currentProject]) {
+        const projectSession = config.projectSessions[currentProject];
+        if (projectSession.userId === userId.toString() && projectSession.model) {
+          return projectSession.model;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[SessionManager] Error getting user model:', error.message);
+      return null;
+    }
   }
 
   /**
@@ -546,11 +574,33 @@ class SessionManager {
   }
 
   /**
-   * Get stored session ID for user
+   * Get stored session ID for user from current project config
    */
   getStoredSessionId(userId) {
-    const storage = this.sessionStorage.get(userId);
-    return storage ? storage.currentSessionId : null;
+    if (!this.configFilePath) {
+      return null;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      const currentProject = this.options.workingDirectory;
+      
+      // Get session ID from project-specific config
+      if (config.projectSessions && config.projectSessions[currentProject]) {
+        const projectSession = config.projectSessions[currentProject];
+        if (projectSession.userId === userId.toString()) {
+          return projectSession.sessionId;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[SessionManager] Error getting stored session ID:', error.message);
+      return null;
+    }
   }
 
   /**
