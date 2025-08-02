@@ -64,7 +64,6 @@ class VoiceMessageHandler {
         `${isTestMode ? '🧪 **Test Mode:** Simulated transcription\n\n' : ''}` +
         `❓ Execute this command?`,
         {
-          parse_mode: 'HTML',
           reply_markup: keyboard
         }
       );
@@ -87,8 +86,7 @@ class VoiceMessageHandler {
         await this.mainBot.safeSendMessage(chatId,
           `❌ *Voice Message Error*\n\n` +
           `Sorry, I couldn't process your voice message.\n\n` +
-          `Error: ${error.message}`,
-          { parse_mode: 'HTML' }
+          `Error: ${error.message}`
         );
       } catch (sendError) {
         console.error('[Voice] Failed to send error message:', sendError);
@@ -104,13 +102,8 @@ class VoiceMessageHandler {
     
     if (!pendingCommand) {
       try {
-        await this.bot.editMessageText(
-          '❌ *Voice command expired*\n\nPlease send a new voice message.',
-          {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'HTML'
-          }
+        await this.mainBot.safeEditMessage(chatId, messageId, 
+          '❌ *Voice command expired*\n\nPlease send a new voice message.'
         );
       } catch (error) {
         // Silently handle edit errors for expired commands
@@ -123,15 +116,10 @@ class VoiceMessageHandler {
     try {
       if (data.startsWith('voice_confirm:')) {
         // Execute the command
-        await this.bot.editMessageText(
+        await this.mainBot.safeEditMessage(chatId, messageId,
           `✅ *Executing voice command*\n\n` +
           `📝 Command: "${transcribedText}"\n\n` +
-          `⏳ Sending to Claude...`,
-          {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'HTML'
-          }
+          `⏳ Sending to Claude...`
         );
         
         // Remove from pending
@@ -141,27 +129,17 @@ class VoiceMessageHandler {
         await processUserMessageCallback(transcribedText, userId, chatId);
         
       } else if (data.startsWith('voice_cancel:')) {
-        await this.bot.editMessageText(
-          '❌ *Voice command cancelled*',
-          {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'HTML'
-          }
+        await this.mainBot.safeEditMessage(chatId, messageId,
+          '❌ *Voice command cancelled*'
         );
         
         this.pendingCommands.delete(messageId);
         
       } else if (data.startsWith('voice_edit:')) {
-        await this.bot.editMessageText(
+        await this.mainBot.safeEditMessage(chatId, messageId,
           `✏️ *Edit voice command*\n\n` +
           `📝 **Original:** "${transcribedText}"\n\n` +
-          `💬 Send the corrected text message:`,
-          {
-            chat_id: chatId,
-            message_id: messageId,
-            parse_mode: 'HTML'
-          }
+          `💬 Send the corrected text message:`
         );
         
         // Keep in pending for manual text input

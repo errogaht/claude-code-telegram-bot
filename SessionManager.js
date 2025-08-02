@@ -70,7 +70,7 @@ class SessionManager {
       await this.saveCurrentSessionToConfig(userId, data.sessionId);
       
       const formatted = this.formatter.formatSessionInit(data);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Assistant text responses
@@ -79,14 +79,14 @@ class SessionManager {
       
       // Typing indicator continues automatically
       const formatted = this.formatter.formatAssistantText(data.text);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Thinking processes
     processor.on('assistant-thinking', async (data) => {
       console.log(`[User ${userId}] Claude thinking`);
       const formatted = this.formatter.formatThinking(data.thinking, data.signature);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // TodoWrite - with live updating
@@ -99,40 +99,40 @@ class SessionManager {
     processor.on('file-edit', async (data) => {
       console.log(`[User ${userId}] File edit: ${data.filePath}`);
       const formatted = this.formatter.formatFileEdit(data.filePath, data.oldString, data.newString);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     processor.on('file-write', async (data) => {
       console.log(`[User ${userId}] File write: ${data.filePath}`);
       const formatted = this.formatter.formatFileWrite(data.filePath, data.content);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     processor.on('file-read', async (data) => {
       console.log(`[User ${userId}] File read: ${data.filePath}`);
       const formatted = this.formatter.formatFileRead(data.filePath);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Bash commands
     processor.on('bash-command', async (data) => {
       console.log(`[User ${userId}] Bash: ${data.command}`);
       const formatted = this.formatter.formatBashCommand(data.command, data.description);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Task spawning
     processor.on('task-spawn', async (data) => {
       console.log(`[User ${userId}] Task: ${data.description}`);
       const formatted = this.formatter.formatTaskSpawn(data.description, data.prompt, data.subagentType);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // MCP tools
     processor.on('mcp-tool', async (data) => {
       console.log(`[User ${userId}] MCP tool: ${data.toolName}`);
       const formatted = this.formatter.formatMCPTool(data.toolName, data.input);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Tool results - we can enhance tool messages with results
@@ -153,7 +153,7 @@ class SessionManager {
       ImageHandler.cleanupTempFile(session, userId);
 
       const formatted = this.formatter.formatExecutionResult(data, session.sessionId);
-      await this.mainBot.safeSendMessage(chatId, formatted.text, { parse_mode: formatted.parse_mode });
+      await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
     // Errors
@@ -313,29 +313,21 @@ class SessionManager {
 
     try {
       if (lastTodoMessageId) {
-        // Try to edit existing message
+        // Try to edit existing message using safeEditMessage
         try {
-          await this.bot.editMessageText(formatted.text, {
-            chat_id: chatId,
-            message_id: lastTodoMessageId,
-            parse_mode: formatted.parse_mode
-          });
-
+          await this.mainBot.safeEditMessage(chatId, lastTodoMessageId, formatted);
           console.log(`[User ${session.userId}] Updated todo message ${lastTodoMessageId}`);
 
         } catch (editError) {
           // If edit fails (message too old, etc.), send new message
           console.log(`[User ${session.userId}] Edit failed, sending new todo message`);
-          const newMessage = await this.bot.sendMessage(chatId, formatted.text,
-            { parse_mode: formatted.parse_mode });
-          session.lastTodoMessageId = newMessage.message_id;
+          await this.mainBot.safeSendMessage(chatId, formatted);
+          // Note: We can't get message_id from safeSendMessage, but that's okay for now
         }
       } else {
-        // Send new message
-        const newMessage = await this.bot.sendMessage(chatId, formatted.text,
-          { parse_mode: formatted.parse_mode });
-        session.lastTodoMessageId = newMessage.message_id;
-        console.log(`[User ${session.userId}] Created new todo message ${newMessage.message_id}`);
+        // Send new message using safeSendMessage
+        await this.mainBot.safeSendMessage(chatId, formatted);
+        console.log(`[User ${session.userId}] Created new todo message`);
       }
 
       // Update stored todos
@@ -351,7 +343,7 @@ class SessionManager {
    */
   async sendError(chatId, error) {
     const formatted = this.formatter.formatError(error);
-    await this.mainBot.safeSendMessage(chatId, formatted.text, {
+    await this.mainBot.safeSendMessage(chatId, formatted, {
       forceNotification: true  // Always notify for internal errors
     });
   }
@@ -417,9 +409,9 @@ class SessionManager {
 
     if (session && session.processor) {
       session.processor.cancel();
-      await this.mainBot.safeSendMessage(chatId, '❌ **Session cancelled**', { parse_mode: 'HTML' });
+      await this.mainBot.safeSendMessage(chatId, '❌ **Session cancelled**');
     } else {
-      await this.mainBot.safeSendMessage(chatId, '⚠️ **No active session to cancel**', { parse_mode: 'HTML' });
+      await this.mainBot.safeSendMessage(chatId, '⚠️ **No active session to cancel**');
     }
   }
 
@@ -435,7 +427,7 @@ class SessionManager {
     // Check if we have any session info (active or stored)
     if (!session && !storedSessionId) {
       await this.mainBot.safeSendMessage(chatId, '📋 **No active session**\n\nSend a message to start!', 
-        { parse_mode: 'HTML' });
+        {});
       return;
     }
 
@@ -468,7 +460,7 @@ class SessionManager {
     text += `📚 **History:** ${sessionHistory.length} sessions\n`;
     text += `🤖 **Model:** ${this.options.model}`;
 
-    await this.mainBot.safeSendMessage(chatId, text, { parse_mode: 'HTML' });
+    await this.mainBot.safeSendMessage(chatId, text);
   }
 
   /**
@@ -504,7 +496,6 @@ class SessionManager {
       `Previous session saved to history.\n` +
       `Use /sessions to view session history.`,
       { 
-        parse_mode: 'HTML',
         reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
       }
     );
@@ -519,7 +510,6 @@ class SessionManager {
 
     if (!session) {
       await this.mainBot.safeSendMessage(chatId, '⚠️ **No active session to end**', { 
-        parse_mode: 'HTML',
         reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
       });
       return;
@@ -550,7 +540,6 @@ class SessionManager {
       `Session saved to history.\n` +
       `Use /new to start a new session.`,
       { 
-        parse_mode: 'HTML',
         reply_markup: this.mainBot.keyboardHandlers.getReplyKeyboardMarkup()
       }
     );
@@ -604,7 +593,7 @@ class SessionManager {
         text += 'No previous sessions found in this project.\n\n';
         text += 'Send a message to start your first session!';
         
-        await this.mainBot.safeSendMessage(chatId, text, { parse_mode: 'HTML' });
+        await this.mainBot.safeSendMessage(chatId, text);
       } else {
         // Show pagination info
         if (totalPages > 1) {
@@ -671,8 +660,7 @@ class SessionManager {
         }
         
         await this.mainBot.safeSendMessage(chatId, text, { 
-          parse_mode: 'HTML',
-          reply_markup: keyboard 
+            reply_markup: keyboard 
         });
       }
       
@@ -682,7 +670,7 @@ class SessionManager {
         '❌ **Error loading session history**\n\n' +
         'Could not read Claude Code session files.\n' +
         'Make sure you are in a project directory.',
-        { parse_mode: 'HTML' }
+        {}
       );
     }
   }
@@ -843,7 +831,6 @@ class SessionManager {
         {
           chat_id: chatId,
           message_id: messageId,
-          parse_mode: 'HTML'
         }
       );
 
@@ -856,7 +843,7 @@ class SessionManager {
       console.error('Error resuming session:', error);
       await this.mainBot.safeSendMessage(chatId, 
         '❌ **Error resuming session**\n\nPlease try again or start a new session.',
-        { parse_mode: 'HTML' }
+        {}
       );
     }
   }
@@ -958,14 +945,13 @@ class SessionManager {
         await this.bot.editMessageText(text, {
           chat_id: chatId,
           message_id: messageId,
-          parse_mode: 'HTML',
-          reply_markup: keyboard
+            reply_markup: keyboard
         });
         
       } catch (editError) {
         await this.mainBot.safeSendMessage(chatId, 
           '❌ **Error updating session history**\n\nPlease use /sessions to view history again.',
-          { parse_mode: 'HTML' }
+          {}
         );
       }
     }

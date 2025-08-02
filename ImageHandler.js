@@ -148,7 +148,7 @@ class ImageHandler {
         `💡 Use /end to close this session\n` +
         `📚 Use /sessions to view history`;
       
-      await this.sessionManager.safeSendMessage(chatId, sessionInitText, { parse_mode: 'HTML' });
+      await this.sessionManager.safeSendMessage(chatId, sessionInitText);
     }
     
     // Store temp file path in session for cleanup after Claude completes
