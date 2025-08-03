@@ -538,6 +538,29 @@ class ClaudeStreamProcessor extends EventEmitter {
   isActive() {
     return this.isProcessing;
   }
+
+  /**
+   * Check if process is responsive
+   */
+  isResponsive() {
+    // If no current process, consider it responsive (idle state)
+    if (!this.currentProcess) {
+      return true;
+    }
+    
+    // If process exists but has been killed, not responsive
+    if (this.currentProcess.killed) {
+      return false;
+    }
+    
+    // If process has exit code, it's no longer responsive
+    if (this.currentProcess.exitCode !== null) {
+      return false;
+    }
+    
+    // Process is running and appears responsive
+    return true;
+  }
 }
 
 module.exports = ClaudeStreamProcessor;

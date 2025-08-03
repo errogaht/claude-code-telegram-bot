@@ -40,7 +40,20 @@ class SessionManager {
       messageCount: 0,
       lastTodoMessageId: null,
       lastTodos: null,
-      createdAt: new Date()
+      createdAt: new Date(),
+      // Status monitoring fields
+      tokenUsage: {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+        transactionCount: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0
+      },
+      lastActivityTime: Date.now(),
+      isStreamActive: false,
+      isHealthy: true,
+      lastHealthCheck: Date.now()
     };
 
     // Setup event handlers for this processor
@@ -76,6 +89,9 @@ class SessionManager {
     // Assistant text responses
     processor.on('assistant-text', async (data) => {
       console.log(`[User ${userId}] Assistant text: ${data.text.substring(0, 100)}...`);
+      
+      // Update activity tracking
+      this.updateSessionActivity(session);
       
       // Typing indicator continues automatically
       const formatted = this.formatter.formatAssistantText(data.text);
@@ -144,6 +160,10 @@ class SessionManager {
     // Execution completion
     processor.on('complete', async (data) => {
       console.log(`[User ${userId}] Execution complete: ${data.success}`);
+
+      // Update activity and token tracking
+      this.updateSessionActivity(session);
+      this.updateTokenUsage(session, data);
 
       // Stop typing indicator when Claude finishes
       await this.activityIndicator.stop(chatId);
@@ -343,7 +363,7 @@ class SessionManager {
   /**
    * Handle TodoWrite with live updating
    */
-  async handleTodoWrite(session, todos, toolId) {
+  async handleTodoWrite(session, todos, _toolId) {
     const { chatId, lastTodoMessageId, lastTodos } = session;
 
     // Check if todos changed
@@ -361,7 +381,7 @@ class SessionManager {
           await this.mainBot.safeEditMessage(chatId, lastTodoMessageId, formatted);
           console.log(`[User ${session.userId}] Updated todo message ${lastTodoMessageId}`);
 
-        } catch (editError) {
+        } catch {
           // If edit fails (message too old, etc.), send new message
           console.log(`[User ${session.userId}] Edit failed, sending new todo message`);
           await this.mainBot.safeSendMessage(chatId, formatted);
@@ -504,12 +524,40 @@ class SessionManager {
       const sessionId = session.sessionId || session.processor.getCurrentSessionId();
       const messageCount = session.messageCount;
       const uptime = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
+      
+      // Get health status
+      const healthStatus = this.checkSessionHealth(session);
+      
+      // Format activity time
+      const timeSinceActivity = Math.round((Date.now() - session.lastActivityTime) / 1000);
+      const activityText = timeSinceActivity < 60 ? 
+        `${timeSinceActivity}s ago` : 
+        `${Math.round(timeSinceActivity / 60)}m ago`;
 
       text += `🆔 **Current:** \`${sessionId ? sessionId.slice(-8) : 'Not started'}\`\n`;
       text += `📋 **Stored:** \`${storedSessionId ? storedSessionId.slice(-8) : 'None'}\`\n`;
       text += `📊 **Status:** ${isActive ? '🔄 Processing' : '💤 Idle'}\n`;
       text += `💬 **Messages:** ${messageCount}\n`;
-      text += `⏱ **Uptime:** ${uptime}s\n`;
+      text += `⏱ **Uptime:** ${uptime}s\n\n`;
+      
+      // Token usage information
+      const tokens = session.tokenUsage;
+      if (tokens.transactionCount > 0) {
+        text += `🎯 **Tokens:** ${tokens.totalTokens} total\n`;
+        text += `   ↳ ${tokens.totalInputTokens} in, ${tokens.totalOutputTokens} out\n`;
+        text += `   ↳ ${tokens.transactionCount} transaction${tokens.transactionCount > 1 ? 's' : ''}\n`;
+        if (tokens.cacheReadTokens > 0) {
+          text += `   ↳ ${tokens.cacheReadTokens} cache read\n`;
+        }
+        text += '\n';
+      } else {
+        text += '🎯 **Tokens:** No usage data yet\n\n';
+      }
+      
+      // Activity and health status
+      text += `💚 **Health:** ${healthStatus.isHealthy ? '✅ Healthy' : '⚠️ ' + healthStatus.reason}\n`;
+      text += `⏰ **Last Activity:** ${activityText}\n`;
+      text += `🔄 **Stream:** ${session.isStreamActive ? '🟢 Active' : '⚪ Idle'}\n`;
     } else if (storedSessionId) {
       // Only stored session exists (bot was restarted)
       text += '🆔 **Current:** 💤 **Not active**\n';
@@ -901,7 +949,7 @@ class SessionManager {
   /**
    * Get current working directory for user
    */
-  getCurrentDirectory(userId) {
+  getCurrentDirectory(_userId) {
     // For now, return the bot's working directory
     // In future, could be user-specific
     return this.options.workingDirectory;
@@ -1035,7 +1083,7 @@ class SessionManager {
           reply_markup: keyboard
         });
         
-      } catch (editError) {
+      } catch {
         await this.mainBot.safeSendMessage(chatId, 
           '❌ **Error updating session history**\n\nPlease use /sessions to view history again.',
           {}
@@ -1052,6 +1100,93 @@ class SessionManager {
       console.error('Failed to send message:', error.message);
       throw error;
     }
+  }
+
+  /**
+   * Update session activity timestamp and stream status
+   */
+  updateSessionActivity(session) {
+    session.lastActivityTime = Date.now();
+    session.isStreamActive = true;
+    
+    // Auto-reset stream activity after 5 seconds of inactivity
+    if (session.activityTimer) {
+      clearTimeout(session.activityTimer);
+    }
+    
+    session.activityTimer = setTimeout(() => {
+      session.isStreamActive = false;
+    }, 5000);
+  }
+
+  /**
+   * Update token usage from execution data
+   */
+  updateTokenUsage(session, executionData) {
+    // Check if we have usage data
+    if (!executionData.usage) {
+      return;
+    }
+
+    const usage = executionData.usage;
+    
+    // Validate usage data
+    const inputTokens = parseInt(usage.input_tokens) || 0;
+    const outputTokens = parseInt(usage.output_tokens) || 0;
+    const cacheReadTokens = parseInt(usage.cache_read_input_tokens) || 0;
+    const cacheCreationTokens = parseInt(usage.cache_creation_input_tokens) || 0;
+
+    // Only update if we have valid token data
+    if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheCreationTokens > 0) {
+      session.tokenUsage.totalInputTokens += inputTokens + cacheReadTokens;
+      session.tokenUsage.totalOutputTokens += outputTokens;
+      session.tokenUsage.cacheReadTokens += cacheReadTokens;
+      session.tokenUsage.cacheCreationTokens += cacheCreationTokens;
+      session.tokenUsage.totalTokens = session.tokenUsage.totalInputTokens + session.tokenUsage.totalOutputTokens;
+      session.tokenUsage.transactionCount += 1;
+
+      console.log(`[User ${session.userId}] Token usage updated: ${session.tokenUsage.totalTokens} total (${session.tokenUsage.transactionCount} transactions)`);
+    }
+  }
+
+  /**
+   * Check session health status
+   */
+  checkSessionHealth(session) {
+    const now = Date.now();
+    const timeSinceActivity = now - session.lastActivityTime;
+    // const timeSinceHealthCheck = now - session.lastHealthCheck;
+    
+    // Update health check timestamp
+    session.lastHealthCheck = now;
+    
+    // Check for stale activity (more than 3 minutes)
+    if (timeSinceActivity > 180000) {
+      session.isHealthy = false;
+      return {
+        isHealthy: false,
+        reason: 'stale activity (>3min)',
+        timeSinceActivity: Math.round(timeSinceActivity / 1000)
+      };
+    }
+    
+    // Check if processor is responsive
+    if (session.processor && typeof session.processor.isResponsive === 'function' && !session.processor.isResponsive()) {
+      session.isHealthy = false;
+      return {
+        isHealthy: false,
+        reason: 'unresponsive processor',
+        timeSinceActivity: Math.round(timeSinceActivity / 1000)
+      };
+    }
+    
+    // Session is healthy
+    session.isHealthy = true;
+    return {
+      isHealthy: true,
+      reason: 'active and responsive',
+      timeSinceActivity: Math.round(timeSinceActivity / 1000)
+    };
   }
 
 }

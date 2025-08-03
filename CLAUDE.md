@@ -89,7 +89,37 @@ npm test -- --coverage                            # With coverage
 
 **Test structure:** `tests/unit/`, `tests/integration/`, `tests/real-bot/`, `tests/helpers/`, `tests/fixtures/`
 
+### 🧪 TDD Development Requirements
+
+**MANDATORY TDD APPROACH:**
+- **ALL features MUST be developed using Test-Driven Development (TDD)**
+- Write tests FIRST, then implement functionality
+- If any changes are made to existing code, tests MUST be updated accordingly
+- No exceptions - every code change requires corresponding test changes
+
+**Testing Guidelines:**
+- **Avoid over-engineering tests** - keep them simple and focused
+- **Test multiple cases in one test** instead of separate individual tests
+- This approach reduces test execution time and improves efficiency
+- Focus on practical scenarios and edge cases within consolidated test blocks
+- Prioritize test coverage over test quantity
+
 ### Development Workflow
+
+**📋 Planning and Documentation Requirements:**
+
+**For Complex Features/Refactoring:**
+1. **Create MD documentation/implementation plan FIRST**
+2. **Get human approval** before starting implementation
+3. **Implement step-by-step** following the documented plan
+4. **Mark completed stages** in the documentation
+5. **Update "What was done" section** with important notes for multi-session work
+6. **Update project documentation** (README, etc.) when feature is complete
+
+**Documentation Updates:**
+- **Always update README** when new features are added - document how to use them
+- **Keep documentation files current** with project changes
+- **Multi-session continuity** - maintain detailed progress notes in implementation docs
 
 **Task Completion Rules:**
 After significant implementation, check if CLAUDE.md needs updates:
@@ -118,8 +148,11 @@ After significant implementation, check if CLAUDE.md needs updates:
 1. Make code changes (always prefer editing existing files over creating new ones)
 2. Test changes work correctly 
 3. Check logs if issues occur: `pm2 logs bot1`
+4. **After completing tasks, ALWAYS run:**
+   - `npm run lint` - fix all linting issues
+   - `npm run test:failures` - fix all failing tests
 
-**⚠️ IMPORTANT:** Bot restart is NOT required after code changes - changes take effect automatically.
+**⚠️ IMPORTANT:** do not do bot restart, only ask human to do that manually
 
 ## 📝 Git Version Control
 
@@ -138,3 +171,4 @@ git add configs/bot3.json  # This will fail - that's correct!
 # ❌ DO NOT: git add -f configs/bot3.json
 # ✅ DO: Leave the file ignored as intended
 ```
+
