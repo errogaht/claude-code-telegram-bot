@@ -25,7 +25,7 @@ module.exports = [
     }
   },
   {
-    files: ['tests/**/*.js', '**/*.test.js', '**/*.spec.js'],
+    files: ['tests/**/*.js', '**/*.test.js', '**/*.spec.js', 'jest.setup.js'],
     languageOptions: {
       globals: {
         ...globals.node,
@@ -42,6 +42,8 @@ module.exports = [
       'node_modules/',
       'coverage/',
       'dist/',
+      'tmp/',
+      'claudia-source/',
       '*.config.js'
     ]
   }

@@ -38,6 +38,7 @@ class KeyboardHandlers {
           { text: '📁 Git' }
         ],
         [
+          { text: '⚙️ Settings' },
           concatButton,
           { text: '🔄 Restart Bot' }
         ]
@@ -137,6 +138,11 @@ class KeyboardHandlers {
     case '🔗 Concat On':
       console.log(`[COMPONENT] StreamTelegramBot.enableConcatMode - userId: ${userId}, chatId: ${chatId}`);
       await this.mainBot.enableConcatMode(userId, chatId);
+      return true;
+        
+    case '⚙️ Settings':
+      console.log(`[COMPONENT] SettingsMenuHandler.showSettingsMenu - chatId: ${chatId}`);
+      await this.mainBot.settingsHandler.showSettingsMenu(chatId);
       return true;
         
     default:

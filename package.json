@@ -26,8 +26,8 @@
     "test:failures": "jest --verbose=false --silent",
     "test:watch-failures": "jest --watch --verbose=false",
     "test:ci": "jest --ci --coverage --watchAll=false",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint . --fix",
     "lint:test": "eslint tests/",
     "list-bots": "ls -la configs/*.json 2>/dev/null | grep -v example || echo 'No bot configurations found. Run: npm run setup'"
   },

@@ -1,0 +1,27 @@
+FROM node:18-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PM2 globally
+RUN npm install -g pm2
+
+# Set working directory
+WORKDIR /workspace
+
+# Pre-install dependencies to speed up builds
+COPY package*.json ./
+RUN npm ci && npm cache clean --force
+
+# Configure git for the container
+RUN git config --global user.name "claude-bot" && \
+    git config --global user.email "claude-bot@anthropic.com" && \
+    git config --global --add safe.directory /workspace
+
+CMD ["/bin/bash"]

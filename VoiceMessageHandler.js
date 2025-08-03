@@ -1,22 +1,67 @@
 const axios = require('axios');
 const FormData = require('form-data');
+const fs = require('fs');
+const NexaraTranscriptionAdapter = require('./adapters/NexaraTranscriptionAdapter');
+const TestTranscriptionAdapter = require('./adapters/TestTranscriptionAdapter');
 
 /**
  * Voice Message Handler - Extracted from StreamTelegramBot
  * Handles voice transcription and processing with Nexara API
  */
 class VoiceMessageHandler {
-  constructor(bot, nexaraApiKey, activityIndicator, mainBot) {
+  constructor(bot, nexaraApiKey, activityIndicator, mainBot, configFilePath = './configs/bot1.json') {
     this.bot = bot;
     this.nexaraApiKey = nexaraApiKey;
     this.activityIndicator = activityIndicator;
     this.mainBot = mainBot; // Reference to main bot for delegation
+    this.configFilePath = configFilePath;
     this.pendingCommands = new Map(); // messageId -> { transcribedText, userId, chatId }
   }
 
+  /**
+   * Get transcription method from config
+   */
+  getTranscriptionMethod() {
+    try {
+      const config = JSON.parse(fs.readFileSync(this.configFilePath, 'utf8'));
+      return config.voiceTranscriptionMethod || 'nexara';
+    } catch (error) {
+      console.warn('[VoiceHandler] Config read error, using default:', error.message);
+      return 'nexara';
+    }
+  }
 
   /**
-   * Handle voice messages with Nexara API
+   * Set transcription method in config
+   */
+  setTranscriptionMethod(method) {
+    try {
+      const config = JSON.parse(fs.readFileSync(this.configFilePath, 'utf8'));
+      config.voiceTranscriptionMethod = method;
+      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      console.log(`[VoiceHandler] Transcription method set to: ${method}`);
+    } catch (error) {
+      throw new Error(`Failed to update config: ${error.message}`);
+    }
+  }
+
+  /**
+   * Create transcription adapter based on config
+   */
+  createTranscriptionAdapter() {
+    // Check if we're in test mode
+    const isTestMode = !this.nexaraApiKey || process.env.NODE_ENV === 'test';
+    
+    if (isTestMode) {
+      return new TestTranscriptionAdapter();
+    }
+    
+    // Always use Nexara API for transcription
+    return new NexaraTranscriptionAdapter(this.nexaraApiKey);
+  }
+
+  /**
+   * Handle voice messages with adapter pattern
    */
   async handleVoiceMessage(msg) {
     const chatId = msg.chat.id;
@@ -26,20 +71,18 @@ class VoiceMessageHandler {
     await this.activityIndicator.start(chatId);
     
     try {
-      // Check if we're in test mode (no Nexara API key or test environment)
-      const isTestMode = !this.nexaraApiKey || process.env.NODE_ENV === 'test';
-      
+      const adapter = this.createTranscriptionAdapter();
       let transcribedText;
       
-      if (isTestMode) {
-        // Test mode - provide simulated transcription
-        transcribedText = 'Test voice message transcription';
+      if (adapter.getName() === 'Test Mode') {
+        transcribedText = await adapter.transcribe(msg.voice.file_id);
         console.log('[Voice] Test mode - using simulated transcription');
       } else {
-        // Production mode - use Nexara API
+        // Nexara API requires audio buffer
         const file = await this.bot.getFile(msg.voice.file_id);
         const audioBuffer = await this.downloadTelegramFile(file.file_path);
-        transcribedText = await this.transcribeWithNexara(audioBuffer);
+        transcribedText = await adapter.transcribe(audioBuffer);
+        console.log(`[Voice] Using ${adapter.getName()} transcription`);
       }
       
       // Stop typing indicator
@@ -61,7 +104,7 @@ class VoiceMessageHandler {
       const confirmMsg = await this.mainBot.safeSendMessage(chatId,
         '🎤 *Voice Message Received*\n\n' +
         `📝 **Text:** "${transcribedText}"\n\n` +
-        `${isTestMode ? '🧪 **Test Mode:** Simulated transcription\n\n' : ''}` +
+        `🔧 **Method:** ${adapter.getName()}\n\n` +
         '❓ Execute this command?',
         {
           reply_markup: keyboard

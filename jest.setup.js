@@ -166,7 +166,7 @@ global.testHelpers = {
     const fs = require('fs');
     try {
       await fs.promises.unlink(filePath);
-    } catch (error) {
+    } catch {
       // Ignore if file doesn't exist
     }
   }

@@ -20,6 +20,9 @@ class SessionManager {
     
     // Token tracking across session chains
     this.cumulativeTokenCache = new Map(); // sessionId -> { totalInputTokens, totalOutputTokens, cacheReadTokens, cacheCreationTokens, transactionCount }
+    
+    // Title tracking for auto-pin functionality
+    this.sessionTitles = new Map(); // userId -> { lastTitle, chatId }
   }
 
   /**
@@ -220,6 +223,15 @@ class SessionManager {
 
       const formatted = this.formatter.formatExecutionResult(data, session.sessionId);
       await this.mainBot.safeSendMessage(chatId, formatted);
+      
+      // Check for title changes after Claude completes processing
+      const sessionId = session.sessionId || session.processor.getCurrentSessionId();
+      if (sessionId) {
+        const currentTitle = await this.getSessionSummary(sessionId);
+        if (currentTitle) {
+          await this.checkAndHandleTitleChange(userId, chatId, currentTitle);
+        }
+      }
     });
 
     // Keep the legacy 'complete' event for backward compatibility (but without usage updates)
@@ -233,6 +245,15 @@ class SessionManager {
       // Clean up temp file if exists
       const ImageHandler = require('./ImageHandler');
       ImageHandler.cleanupTempFile(session, userId);
+      
+      // Check for title changes after Claude completes processing
+      const sessionId = session.sessionId || session.processor.getCurrentSessionId();
+      if (sessionId) {
+        const currentTitle = await this.getSessionSummary(sessionId);
+        if (currentTitle) {
+          await this.checkAndHandleTitleChange(userId, chatId, currentTitle);
+        }
+      }
     });
 
     // Errors
@@ -602,6 +623,9 @@ class SessionManager {
     // Add session summary at the top if available
     if (sessionSummary) {
       text += `💡 **Current Work:** ${sessionSummary}\n\n`;
+      
+      // Check if title has changed and handle auto-pin
+      await this.checkAndHandleTitleChange(userId, chatId, sessionSummary);
     }
 
     if (session) {
@@ -1403,6 +1427,52 @@ class SessionManager {
     } catch {
       // Session file not found or other error
       return null;
+    }
+  }
+
+  /**
+   * Check if session title has changed and send/pin message if it has
+   */
+  async checkAndHandleTitleChange(userId, chatId, newTitle) {
+    if (!newTitle) return;
+
+    const titleInfo = this.sessionTitles.get(userId);
+    const lastTitle = titleInfo?.lastTitle;
+
+    // Only proceed if title has actually changed
+    if (lastTitle !== newTitle) {
+      console.log(`[User ${userId}] Title changed from "${lastTitle}" to "${newTitle}"`);
+      
+      // Update stored title
+      this.sessionTitles.set(userId, { lastTitle: newTitle, chatId: chatId });
+      
+      // Don't send pin message for very first title (when lastTitle is undefined)
+      if (lastTitle !== undefined) {
+        await this.sendAndPinTitleMessage(chatId, newTitle);
+      }
+    }
+  }
+
+  /**
+   * Send a title message and pin it to the chat
+   */
+  async sendAndPinTitleMessage(chatId, title) {
+    try {
+      const message = `💡 **Current Work:** ${title}`;
+      
+      const sentMessage = await this.mainBot.safeSendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        disable_notification: true
+      });
+
+      if (sentMessage && sentMessage.message_id) {
+        await this.bot.pinChatMessage(chatId, sentMessage.message_id, {
+          disable_notification: true
+        });
+        console.log(`[Chat ${chatId}] Pinned title message: "${title}"`);
+      }
+    } catch (error) {
+      console.error(`[Chat ${chatId}] Failed to send/pin title message:`, error.message);
     }
   }
 

@@ -1,4 +1,4 @@
-name: Claude Code
+name: Claude Code (Fast with Pre-built Image)
 
 on:
   issue_comment:
@@ -13,56 +13,37 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude-fast')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude-fast')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude-fast')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude-fast') || contains(github.event.issue.title, '@claude-fast')))
     runs-on: ubuntu-latest
     container:
-      image: node:18-slim
+      image: ghcr.io/${{ github.repository }}/dev-env:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       contents: write
       pull-requests: write
       issues: write
       id-token: write
       actions: read
+      packages: read
 
     steps:
-      - name: Install system dependencies
-        run: |
-          apt-get update && apt-get install -y \
-            git \
-            python3 \
-            make \
-            g++ \
-            curl \
-            && rm -rf /var/lib/apt/lists/*
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cache node modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install PM2 globally
-        run: npm install -g pm2
-
-      - name: Setup git configuration
+      - name: Update dependencies if needed
         run: |
-          git config --global user.name "claude-bot"
-          git config --global user.email "claude-bot@anthropic.com"
-          git config --global --add safe.directory /github/workspace
+          if [ -f package-lock.json ] && [ package-lock.json -nt node_modules/.package-lock.json ]; then
+            npm ci
+            cp package-lock.json node_modules/.package-lock.json
+          fi
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@beta
@@ -93,7 +74,7 @@ jobs:
             - All code must be in English only (project policy)
             - Run npm run test:failures to check for test failures
             - Git operations are extensively used via GitManager.js
+            - This is the FAST version using pre-built Docker image
           claude_env: |
             NODE_ENV: test
             CI: true
-

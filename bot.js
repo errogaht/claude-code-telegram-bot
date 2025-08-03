@@ -13,6 +13,7 @@ const ProjectNavigator = require('./ProjectNavigator');
 const KeyboardHandlers = require('./KeyboardHandlers');
 const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
+const SettingsMenuHandler = require('./SettingsMenuHandler');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -59,6 +60,9 @@ class StreamTelegramBot {
     
     // Voice message handler
     this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this);
+    
+    // Settings menu handler
+    this.settingsHandler = new SettingsMenuHandler(this, this.voiceHandler);
     
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
@@ -291,6 +295,12 @@ class StreamTelegramBot {
           // Just answer the callback - page info button is non-interactive
           await this.bot.answerCallbackQuery(query.id, { text: 'Page indicator' });
           return;
+        } else if (data.startsWith('settings:')) {
+          console.log(`[COMPONENT] SettingsMenuHandler.handleSettingsCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          const handled = await this.settingsHandler.handleSettingsCallback(data, chatId, messageId);
+          if (!handled) {
+            console.log(`[COMPONENT] Settings callback not handled: "${data}", chatId: ${chatId}`);
+          }
         } else {
           console.log(`[COMPONENT] Unknown button data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
         }
@@ -373,6 +383,14 @@ class StreamTelegramBot {
       console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /pwd in chat ${msg.chat.id}`);
       console.log(`[COMPONENT] StreamTelegramBot.showCurrentDirectory - chatId: ${msg.chat.id}`);
       await this.showCurrentDirectory(msg.chat.id);
+    });
+
+    this.bot.onText(/\/settings/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /settings in chat ${msg.chat.id}`);
+      console.log(`[COMPONENT] SettingsMenuHandler.showSettingsMenu - chatId: ${msg.chat.id}`);
+      await this.settingsHandler.showSettingsMenu(msg.chat.id);
     });
 
     // Model selection commands
