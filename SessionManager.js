@@ -17,6 +17,9 @@ class SessionManager {
     // Session storage
     this.userSessions = new Map(); // userId -> { processor, sessionId, lastTodoMessageId, etc }
     this.sessionStorage = new Map(); // userId -> { currentSessionId, sessionHistory: [] }
+    
+    // Token tracking across session chains
+    this.cumulativeTokenCache = new Map(); // sessionId -> { totalInputTokens, totalOutputTokens, cacheReadTokens, cacheCreationTokens, transactionCount }
   }
 
   /**
@@ -36,10 +39,21 @@ class SessionManager {
     // Get stored session ID to check if this is a continuation
     const storedSessionId = this.getStoredSessionId(userId);
     let previousTokenUsage = null;
+    let sessionTitle = null;
 
-    // If we have a stored session, try to get its token usage for continuation
+    // If we have a stored session, try to get its token usage and title for continuation
     if (storedSessionId) {
       previousTokenUsage = await this.getSessionTokenUsage(storedSessionId);
+      
+      // Calculate and cache cumulative tokens from all parent sessions
+      // This ensures we have the full context usage for accurate status display
+      await this.getCumulativeTokens(storedSessionId);
+      
+      // First try to get session title from config (faster), then from JSONL file
+      sessionTitle = this.getStoredSessionTitle(userId);
+      if (!sessionTitle) {
+        sessionTitle = await this.getSessionSummary(storedSessionId);
+      }
     }
 
     const session = {
@@ -64,6 +78,7 @@ class SessionManager {
       isHealthy: true,
       lastHealthCheck: Date.now(),
       isContinuation: !!previousTokenUsage,
+      sessionTitle: sessionTitle,
       autoCompactInProgress: false
     };
 
@@ -93,7 +108,15 @@ class SessionManager {
       // IMPORTANT: Save session to config file immediately for persistence across bot restarts
       await this.saveCurrentSessionToConfig(userId, data.sessionId);
       
-      const formatted = this.formatter.formatSessionInit(data);
+      // Enhance data with additional information for better session display
+      const enhancedData = {
+        ...data,
+        thinkingMode: this.getUserThinkingMode(userId),
+        isContinuation: session.isContinuation,
+        sessionTitle: session.sessionTitle
+      };
+      
+      const formatted = this.formatter.formatSessionInit(enhancedData);
       await this.mainBot.safeSendMessage(chatId, formatted);
     });
 
@@ -109,6 +132,9 @@ class SessionManager {
         this.updateTokenUsage(session, { usage: data.usage });
         await this.checkAutoCompact(session, chatId);
       }
+      
+      // Update session title from latest JSONL content (throttled to avoid excessive file reads)
+      await this.updateSessionTitle(session, userId);
       
       // Typing indicator continues automatically
       const formatted = this.formatter.formatAssistantText(data.text);
@@ -374,11 +400,17 @@ class SessionManager {
       
       // Save session info for current project
       const currentProject = this.options.workingDirectory;
+      
+      // Get current session title if available
+      const session = this.getUserSession(userId);
+      const sessionTitle = session ? session.sessionTitle : null;
+      
       config.projectSessions[currentProject] = {
         userId: userId.toString(),
         sessionId: sessionId,
         timestamp: new Date().toISOString(),
-        model: this.options.model
+        model: this.options.model,
+        sessionTitle: sessionTitle
       };
       
       // Also update currentProject
@@ -594,25 +626,43 @@ class SessionManager {
       text += `💬 **Messages:** ${messageCount}\n`;
       text += `⏱ **Uptime:** ${uptime}s\n\n`;
       
-      // Token usage information with context window ratio
-      const tokens = session.tokenUsage;
+      // Token usage information with context window ratio - including cumulative from all parent sessions
+      const currentTokens = session.tokenUsage;
       const contextLimit = this.getContextWindowLimit(this.options.model);
       
-      if (tokens.transactionCount > 0) {
+      // Get cumulative tokens from session chain (if continuation) or use current session tokens
+      let displayTokens = currentTokens;
+      if (session.isContinuation && storedSessionId) {
+        // Get cumulative tokens from cache (should be available from session creation)
+        const cumulativeTokens = this.cumulativeTokenCache.get(storedSessionId);
+        if (cumulativeTokens) {
+          // Combine cumulative parent tokens with current session tokens
+          displayTokens = {
+            totalInputTokens: cumulativeTokens.totalInputTokens + currentTokens.totalInputTokens,
+            totalOutputTokens: cumulativeTokens.totalOutputTokens + currentTokens.totalOutputTokens,
+            totalTokens: cumulativeTokens.totalTokens + currentTokens.totalTokens,
+            transactionCount: cumulativeTokens.transactionCount + currentTokens.transactionCount,
+            cacheReadTokens: cumulativeTokens.cacheReadTokens + currentTokens.cacheReadTokens,
+            cacheCreationTokens: cumulativeTokens.cacheCreationTokens + currentTokens.cacheCreationTokens
+          };
+        }
+      }
+      
+      if (displayTokens.transactionCount > 0) {
         // Calculate core tokens (excluding cache for context limit)
-        const coreTokens = tokens.totalInputTokens + tokens.totalOutputTokens - tokens.cacheReadTokens;
+        const coreTokens = displayTokens.totalInputTokens + displayTokens.totalOutputTokens - displayTokens.cacheReadTokens;
         const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
         
-        text += `🎯 **Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
-        text += `   ↳ ${tokens.totalInputTokens - tokens.cacheReadTokens} in, ${tokens.totalOutputTokens} out\n`;
-        text += `   ↳ ${tokens.transactionCount} transaction${tokens.transactionCount > 1 ? 's' : ''}\n`;
-        
-        if (tokens.cacheReadTokens > 0) {
-          text += `💾 **Cache:** ${tokens.cacheReadTokens.toLocaleString()} read, ${tokens.cacheCreationTokens.toLocaleString()} created\n`;
-        }
+        // Show cumulative context if this is a continuation
+        const contextLabel = session.isContinuation ? 'Total Context' : 'Context';
+        text += `🎯 **${contextLabel}:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
+        text += `   ↳ ${displayTokens.totalInputTokens - displayTokens.cacheReadTokens} in, ${displayTokens.totalOutputTokens} out\n`;
+        text += `   ↳ ${displayTokens.transactionCount} transaction${displayTokens.transactionCount > 1 ? 's' : ''}\n`;
         
         if (session.isContinuation) {
-          text += '   ↳ 🔄 Continued from previous session\n';
+          // Show breakdown of previous vs current session tokens
+          text += `   ↳ 🔄 Previous sessions: ${(displayTokens.totalInputTokens - currentTokens.totalInputTokens + displayTokens.totalOutputTokens - currentTokens.totalOutputTokens).toLocaleString()} tokens\n`;
+          text += `   ↳ 📝 Current session: ${(currentTokens.totalInputTokens + currentTokens.totalOutputTokens).toLocaleString()} tokens\n`;
         }
         
         // Warning when approaching limit
@@ -637,22 +687,25 @@ class SessionManager {
       text += '💬 **Messages:** -\n';
       text += '⏱ **Uptime:** -\n\n';
       
-      // Get token usage from stored session
-      const storedTokens = await this.getSessionTokenUsage(storedSessionId);
+      // Get cumulative token usage from stored session chain
       const contextLimit = this.getContextWindowLimit(this.options.model);
       
-      if (storedTokens && storedTokens.transactionCount > 0) {
+      // Check if we have cumulative tokens cached, otherwise calculate them
+      let cumulativeTokens = this.cumulativeTokenCache.get(storedSessionId);
+      if (!cumulativeTokens) {
+        // Calculate cumulative tokens if not cached (e.g., after bot restart)
+        cumulativeTokens = await this.getCumulativeTokens(storedSessionId);
+      }
+      
+      if (cumulativeTokens && cumulativeTokens.transactionCount > 0) {
         // Calculate core tokens (excluding cache for context limit)
-        const coreTokens = storedTokens.totalInputTokens + storedTokens.totalOutputTokens - storedTokens.cacheReadTokens;
+        const coreTokens = cumulativeTokens.totalInputTokens + cumulativeTokens.totalOutputTokens - cumulativeTokens.cacheReadTokens;
         const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
         
-        text += `🎯 **Stored Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
-        text += `   ↳ ${storedTokens.totalInputTokens - storedTokens.cacheReadTokens} in, ${storedTokens.totalOutputTokens} out\n`;
-        text += `   ↳ ${storedTokens.transactionCount} transaction${storedTokens.transactionCount > 1 ? 's' : ''}\n`;
-        
-        if (storedTokens.cacheReadTokens > 0) {
-          text += `💾 **Cache:** ${storedTokens.cacheReadTokens.toLocaleString()} read, ${storedTokens.cacheCreationTokens.toLocaleString()} created\n`;
-        }
+        text += `🎯 **Total Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
+        text += `   ↳ ${cumulativeTokens.totalInputTokens - cumulativeTokens.cacheReadTokens} in, ${cumulativeTokens.totalOutputTokens} out\n`;
+        text += `   ↳ ${cumulativeTokens.transactionCount} transaction${cumulativeTokens.transactionCount > 1 ? 's' : ''}\n`;
+        text += '   ↳ 🔗 Includes all parent sessions in chain\n';
         
         // Warning when approaching limit
         if (usagePercentage > 80) {
@@ -661,7 +714,7 @@ class SessionManager {
         
         text += '\n';
       } else {
-        text += `🎯 **Stored Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
+        text += `🎯 **Total Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
       }
       
       text += '💡 **Send a message to resume this session**\n';
@@ -670,7 +723,14 @@ class SessionManager {
     const path = require('path');
     text += `📁 **Directory:** ${path.basename(this.options.workingDirectory)}\n`;
     text += `📚 **History:** ${sessionHistory.length} sessions\n`;
-    text += `🤖 **Model:** ${this.options.model}`;
+    text += `🤖 **Model:** ${this.options.model}\n`;
+    
+    // Add thinking mode display
+    const thinkingMode = this.getUserThinkingMode(userId);
+    if (thinkingMode) {
+      const thinkingDisplay = this.getThinkingModeDisplay(thinkingMode);
+      text += `🧠 **Thinking Mode:** ${thinkingDisplay}`;
+    }
 
     await this.mainBot.safeSendMessage(chatId, text);
   }
@@ -1143,6 +1203,126 @@ class SessionManager {
   }
 
   /**
+   * Get parent session ID from session file
+   */
+  async getParentSessionId(sessionId, customSessionsDir = null) {
+    if (!sessionId) {
+      return null;
+    }
+
+    try {
+      const path = require('path');
+      const fs = require('fs').promises;
+      const os = require('os');
+
+      // Use custom sessions directory for testing, otherwise compute real one
+      let sessionsDir;
+      if (customSessionsDir) {
+        sessionsDir = customSessionsDir;
+      } else {
+        // Convert project path to Claude Code directory format
+        const projectPath = this.options.workingDirectory;
+        const claudeProjectDir = projectPath.replace(/\//g, '-').replace(/^-/, '');
+        sessionsDir = path.join(os.homedir(), '.claude', 'projects', `-${claudeProjectDir}`);
+      }
+      
+      const sessionFilePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+
+      // Check if session file exists
+      await fs.access(sessionFilePath);
+      
+      // Read the first line to get parent session ID
+      const content = await fs.readFile(sessionFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+      
+      if (lines.length > 0) {
+        try {
+          const firstLine = JSON.parse(lines[0]);
+          return firstLine.parentUuid || null;
+        } catch {
+          return null;
+        }
+      }
+      
+      return null;
+      
+    } catch (error) {
+      console.error(`[SessionManager] Error reading parent session ID for ${sessionId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate cumulative tokens from all parent sessions in the chain
+   */
+  async calculateCumulativeTokens(sessionId, customSessionsDir = null) {
+    if (!sessionId) {
+      return {
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+        transactionCount: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0
+      };
+    }
+
+    // Check if we already have this cached
+    if (this.cumulativeTokenCache.has(sessionId)) {
+      return this.cumulativeTokenCache.get(sessionId);
+    }
+
+    const result = {
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: 0,
+      transactionCount: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0
+    };
+
+    // Walk up the session chain
+    let currentSessionId = sessionId;
+    const visitedSessions = new Set(); // Prevent infinite loops
+    
+    while (currentSessionId && !visitedSessions.has(currentSessionId)) {
+      visitedSessions.add(currentSessionId);
+      
+      // Get tokens for current session
+      const sessionTokens = await this.getSessionTokenUsage(currentSessionId, customSessionsDir);
+      if (sessionTokens) {
+        result.totalInputTokens += sessionTokens.totalInputTokens;
+        result.totalOutputTokens += sessionTokens.totalOutputTokens;
+        result.totalTokens += sessionTokens.totalTokens;
+        result.transactionCount += sessionTokens.transactionCount;
+        result.cacheReadTokens += sessionTokens.cacheReadTokens;
+        result.cacheCreationTokens += sessionTokens.cacheCreationTokens;
+      }
+
+      // Get parent session ID
+      currentSessionId = await this.getParentSessionId(currentSessionId, customSessionsDir);
+    }
+
+    // Cache the result for future use
+    this.cumulativeTokenCache.set(sessionId, result);
+    
+    return result;
+  }
+
+  /**
+   * Get or calculate cumulative tokens for a session chain
+   */
+  async getCumulativeTokens(sessionId, customSessionsDir = null) {
+    // If we have it cached, return it
+    if (this.cumulativeTokenCache.has(sessionId)) {
+      return this.cumulativeTokenCache.get(sessionId);
+    }
+
+    // Otherwise calculate and cache it
+    return await this.calculateCumulativeTokens(sessionId, customSessionsDir);
+  }
+
+  /**
    * Get session summary from Claude Code session file
    */
   async getSessionSummary(sessionId, customSessionsDir = null) {
@@ -1611,6 +1791,100 @@ class SessionManager {
       reason: 'active and responsive',
       timeSinceActivity: Math.round(timeSinceActivity / 1000)
     };
+  }
+
+  /**
+   * Get user's thinking mode preference
+   */
+  getUserThinkingMode(userId) {
+    if (!this.mainBot.userPreferences) {
+      return 'auto';
+    }
+    return this.mainBot.userPreferences.get(`${userId}_thinking`) || 'auto';
+  }
+
+  /**
+   * Get thinking mode display format
+   */
+  getThinkingModeDisplay(thinkingMode) {
+    const thinkingModes = {
+      'none': '🚫 None',
+      'light': '💡 Light',
+      'medium': '🧠 Medium', 
+      'deep': '🎯 Deep',
+      'max': '🚀 Maximum',
+      'auto': '🤖 Auto'
+    };
+    
+    return thinkingModes[thinkingMode] || `🤔 ${thinkingMode}`;
+  }
+
+  /**
+   * Get thinking mode config by ID
+   */
+  getThinkingModeById(id) {
+    const thinkingModes = this.mainBot.thinkingModes || [
+      { id: 'none', name: 'None', description: 'No thinking process' },
+      { id: 'light', name: 'Light', description: 'Basic reasoning' },
+      { id: 'medium', name: 'Medium', description: 'Balanced analysis' },
+      { id: 'deep', name: 'Deep', description: 'Thorough consideration' },
+      { id: 'max', name: 'Maximum', description: 'Exhaustive analysis' }
+    ];
+    return thinkingModes.find(mode => mode.id === id) || thinkingModes[0];
+  }
+
+  /**
+   * Get stored session title from config file
+   */
+  getStoredSessionTitle(userId) {
+    if (!this.configFilePath) {
+      return null;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      const currentProject = this.options.workingDirectory;
+      if (config.projectSessions && config.projectSessions[currentProject]) {
+        const projectSession = config.projectSessions[currentProject];
+        if (projectSession.userId === userId.toString()) {
+          return projectSession.sessionTitle || null;
+        }
+      }
+    } catch (error) {
+      console.error(`[User ${userId}] Failed to read session title from config:`, error.message);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Update session title from latest JSONL content (throttled)
+   */
+  async updateSessionTitle(session, userId) {
+    // Throttle updates to avoid excessive file system access
+    const now = Date.now();
+    if (!session.lastTitleUpdate || now - session.lastTitleUpdate > 30000) { // Update at most every 30 seconds
+      session.lastTitleUpdate = now;
+      
+      try {
+        const sessionId = session.sessionId || session.processor.getCurrentSessionId();
+        if (sessionId) {
+          const newTitle = await this.getSessionSummary(sessionId);
+          if (newTitle && newTitle !== session.sessionTitle) {
+            console.log(`[User ${userId}] Session title updated: "${newTitle}"`);
+            session.sessionTitle = newTitle;
+            
+            // Save updated title to config file
+            await this.saveCurrentSessionToConfig(userId, sessionId);
+          }
+        }
+      } catch (error) {
+        console.error(`[User ${userId}] Failed to update session title:`, error.message);
+      }
+    }
   }
 
 }

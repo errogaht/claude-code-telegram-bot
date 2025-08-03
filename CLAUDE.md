@@ -15,6 +15,22 @@
 - Error messages and system feedback
 - Variable names and function descriptions
 
+## 🎯 DEVELOPER TOOL APPLICATION
+
+**TARGET AUDIENCE**: This application is designed specifically for developers. This means:
+- Users understand technical concepts and terminology
+- Direct, technical error messages are acceptable and preferred
+- No need for extensive hand-holding or simplified explanations
+- Users can handle raw API errors and troubleshoot issues independently
+- Focus on functionality over user-friendly explanations
+
+**DESIGN IMPLICATIONS**:
+- Error messages can be direct and technical
+- No need for fallback mechanisms - show errors directly
+- Users can handle configuration files and technical settings
+- Documentation assumes technical knowledge
+- Interface can prioritize efficiency over simplicity
+
 ## 📋 PM2 Process Management
 
 ### Log Monitoring
@@ -125,7 +141,7 @@ npm test -- --coverage                            # With coverage
 After significant implementation, check if CLAUDE.md needs updates:
 
 **ALWAYS ADD:**
-- New major system components (GitManager replaces GitDiffManager and fixes Telegram Markdown parsing)
+- New major system components
 - Critical infrastructure that exists (testing, build systems, deployment)
 - Essential commands and procedures future sessions need
 - Important project constraints and policies

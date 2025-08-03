@@ -806,15 +806,15 @@ class StreamTelegramBot {
       let cleanError = description;
       
       // Parse HTML parsing errors
-      if (description.includes("can't parse entities")) {
+      if (description.includes('can\'t parse entities')) {
         const match = description.match(/Unsupported start tag "([^"]*)" at byte offset (\d+)/);
         if (match) {
           cleanError = `Invalid HTML tag "${match[1]}" at position ${match[2]}`;
         } else {
-          cleanError = "HTML formatting error - invalid markup detected";
+          cleanError = 'HTML formatting error - invalid markup detected';
         }
-      } else if (description.includes("Bad Request")) {
-        cleanError = description.replace("Bad Request: ", "");
+      } else if (description.includes('Bad Request')) {
+        cleanError = description.replace('Bad Request: ', '');
       }
       
       return {
@@ -890,16 +890,31 @@ class StreamTelegramBot {
       const parsedError = this.extractTelegramError(error);
       console.error(`[SafeSendMessage] ${parsedError.type} Error:`, parsedError.message);
       
+      // Enhanced error logging with full message content for HTML parsing errors
+      if (parsedError.message.includes('Invalid HTML tag') || parsedError.message.includes('position')) {
+        console.error(`[SafeSendMessage] Original text that caused the error (length: ${text.length}):`);
+        console.error(`[SafeSendMessage] ===== ORIGINAL TEXT START =====`);
+        console.error(text);
+        console.error(`[SafeSendMessage] ===== ORIGINAL TEXT END =====`);
+        
+        if (htmlText !== text) {
+          console.error(`[SafeSendMessage] Converted HTML (length: ${htmlText.length}):`);
+          console.error(`[SafeSendMessage] ===== HTML TEXT START =====`);
+          console.error(htmlText);
+          console.error(`[SafeSendMessage] ===== HTML TEXT END =====`);
+        }
+      }
+      
       // Throw a clean error for calling code to handle
       const cleanError = new Error(`Message send failed: ${parsedError.message}`);
       cleanError.telegramError = parsedError;
       
       // Send user-friendly error message to chat
       try {
-        const userMessage = `❌ **Message Error**\n\n` +
+        const userMessage = '❌ **Message Error**\n\n' +
           `💬 **Issue:** ${parsedError.message}\n` +
           `🔧 **Code:** ${parsedError.code}\n\n` +
-          `💡 This usually means there's invalid formatting in the message.`;
+          '💡 This usually means there\'s invalid formatting in the message.';
           
         return await this.bot.sendMessage(chatId, userMessage, {
           parse_mode: 'HTML',
@@ -949,10 +964,10 @@ class StreamTelegramBot {
       
       // Try to edit with user-friendly error message
       try {
-        const userMessage = `❌ **Edit Error**\n\n` +
+        const userMessage = '❌ **Edit Error**\n\n' +
           `💬 **Issue:** ${parsedError.message}\n` +
           `🔧 **Code:** ${parsedError.code}\n\n` +
-          `💡 This usually means there's invalid formatting in the message.`;
+          '💡 This usually means there\'s invalid formatting in the message.';
           
         await this.bot.editMessageText(userMessage, {
           chat_id: chatId,
@@ -1347,7 +1362,6 @@ class StreamTelegramBot {
       // First message - create new session
       console.log(`[ProcessUserMessage] Creating new session for user ${userId}`);
       session = await this.sessionManager.createUserSession(userId, chatId);
-      await this.sendSessionInit(chatId, session);
     } else {
       console.log(`[ProcessUserMessage] Using existing session for user ${userId}, message count: ${session.messageCount}`);
     }
@@ -1533,22 +1547,22 @@ class StreamTelegramBot {
       const messageNumber = i + 1;
       
       switch (message.type) {
-        case 'text':
-          combinedText += `[Message ${messageNumber} - Text]\n${message.content}\n\n`;
-          break;
+      case 'text':
+        combinedText += `[Message ${messageNumber} - Text]\n${message.content}\n\n`;
+        break;
           
-        case 'voice':
-          combinedText += `[Message ${messageNumber} - Voice Transcription]\n${message.content}\n\n`;
-          break;
+      case 'voice':
+        combinedText += `[Message ${messageNumber} - Voice Transcription]\n${message.content}\n\n`;
+        break;
           
-        case 'image':
-          combinedText += `[Message ${messageNumber} - Image${message.content ? ' with caption' : ''}]\n`;
-          if (message.content) {
-            combinedText += `Caption: ${message.content}\n`;
-          }
-          combinedText += `Image: ${message.imagePath}\n\n`;
-          imagePaths.push(message.imagePath);
-          break;
+      case 'image':
+        combinedText += `[Message ${messageNumber} - Image${message.content ? ' with caption' : ''}]\n`;
+        if (message.content) {
+          combinedText += `Caption: ${message.content}\n`;
+        }
+        combinedText += `Image: ${message.imagePath}\n\n`;
+        imagePaths.push(message.imagePath);
+        break;
       }
     }
     

@@ -194,7 +194,13 @@ describe('SessionManager', () => {
       mockProcessor.emit('session-init', sessionData);
       await new Promise(resolve => process.nextTick(resolve)); // Wait for async handlers
 
-      expect(mockFormatter.formatSessionInit).toHaveBeenCalledWith(sessionData);
+      // The formatter should be called with enhanced data including additional fields
+      expect(mockFormatter.formatSessionInit).toHaveBeenCalledWith({
+        sessionId: 'new-session-123',
+        thinkingMode: 'auto', // default from getUserThinkingMode
+        isContinuation: false,
+        sessionTitle: null
+      });
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
         'Session started'
@@ -824,6 +830,157 @@ describe('SessionManager', () => {
     test('should return working directory', () => {
       const dir = sessionManager.getCurrentDirectory('user123');
       expect(dir).toBe('/test/dir');
+    });
+  });
+
+  describe('Cumulative Token Tracking', () => {
+    const mockSessionsDir = '/mock/sessions';
+    
+    beforeEach(() => {
+      const fs = require('fs');
+      
+      // Mock file system for session files - using promises interface
+      if (!fs.promises) {
+        fs.promises = {};
+      }
+      fs.promises.access = jest.fn();
+      fs.promises.readFile = jest.fn();
+      
+      // Clear token cache before each test
+      sessionManager.cumulativeTokenCache.clear();
+    });
+
+    test('should parse parent session ID from JSONL file', async () => {
+      const fs = require('fs');
+      const testSessionId = 'child-session-id';
+      const parentSessionId = 'parent-session-id';
+      
+      // Mock file access and read using promises interface
+      fs.promises.access.mockResolvedValue();
+      fs.promises.readFile.mockResolvedValue(`{"parentUuid":"${parentSessionId}","sessionId":"${testSessionId}"}\n`);
+      
+      const result = await sessionManager.getParentSessionId(testSessionId, mockSessionsDir);
+      expect(result).toBe(parentSessionId);
+    });
+
+    test('should return null for session without parent', async () => {
+      const fs = require('fs');
+      const testSessionId = 'root-session-id';
+      
+      // Mock file access and read - no parentUuid using promises interface
+      fs.promises.access.mockResolvedValue();
+      fs.promises.readFile.mockResolvedValue(`{"sessionId":"${testSessionId}"}\n`);
+      
+      const result = await sessionManager.getParentSessionId(testSessionId, mockSessionsDir);
+      expect(result).toBeNull();
+    });
+
+    test('should calculate cumulative tokens from session chain', async () => {
+      // Mock sessions: child -> parent -> grandparent
+      const childId = 'child-session';
+      
+      // Mock getSessionTokenUsage for each session
+      sessionManager.getSessionTokenUsage = jest.fn()
+        .mockImplementation((sessionId) => {
+          const tokens = {
+            'child-session': { totalInputTokens: 1000, totalOutputTokens: 500, cacheReadTokens: 100, cacheCreationTokens: 50, transactionCount: 5, totalTokens: 1500 },
+            'parent-session': { totalInputTokens: 2000, totalOutputTokens: 800, cacheReadTokens: 200, cacheCreationTokens: 100, transactionCount: 8, totalTokens: 2800 },
+            'grandparent-session': { totalInputTokens: 1500, totalOutputTokens: 600, cacheReadTokens: 150, cacheCreationTokens: 75, transactionCount: 6, totalTokens: 2100 }
+          };
+          return Promise.resolve(tokens[sessionId] || null);
+        });
+
+      // Mock getParentSessionId chain
+      sessionManager.getParentSessionId = jest.fn()
+        .mockImplementation((sessionId) => {
+          const parents = {
+            'child-session': 'parent-session',
+            'parent-session': 'grandparent-session',
+            'grandparent-session': null
+          };
+          return Promise.resolve(parents[sessionId] || null);
+        });
+
+      const result = await sessionManager.calculateCumulativeTokens(childId, mockSessionsDir);
+      
+      // Should sum all tokens from the chain
+      expect(result.totalInputTokens).toBe(4500); // 1000 + 2000 + 1500
+      expect(result.totalOutputTokens).toBe(1900); // 500 + 800 + 600
+      expect(result.cacheReadTokens).toBe(450); // 100 + 200 + 150
+      expect(result.cacheCreationTokens).toBe(225); // 50 + 100 + 75
+      expect(result.transactionCount).toBe(19); // 5 + 8 + 6
+      expect(result.totalTokens).toBe(6400); // 1500 + 2800 + 2100
+    });
+
+    test('should cache cumulative token results', async () => {
+      const testSessionId = 'test-session';
+      const mockTokens = {
+        totalInputTokens: 1000,
+        totalOutputTokens: 500,
+        cacheReadTokens: 100,
+        cacheCreationTokens: 50,
+        transactionCount: 5,
+        totalTokens: 1500
+      };
+
+      // Mock single session without parents
+      sessionManager.getSessionTokenUsage = jest.fn().mockResolvedValue(mockTokens);
+      sessionManager.getParentSessionId = jest.fn().mockResolvedValue(null);
+
+      // First call should calculate
+      const result1 = await sessionManager.calculateCumulativeTokens(testSessionId, mockSessionsDir);
+      expect(result1).toEqual(mockTokens);
+      
+      // Verify it's cached
+      expect(sessionManager.cumulativeTokenCache.has(testSessionId)).toBe(true);
+      
+      // Second call should use cache
+      const result2 = await sessionManager.getCumulativeTokens(testSessionId, mockSessionsDir);
+      expect(result2).toEqual(mockTokens);
+      
+      // Should not have called calculation functions again
+      expect(sessionManager.getSessionTokenUsage).toHaveBeenCalledTimes(1);
+    });
+
+    test('should handle empty token usage', async () => {
+      const testSessionId = 'empty-session';
+      
+      sessionManager.getSessionTokenUsage = jest.fn().mockResolvedValue(null);
+      sessionManager.getParentSessionId = jest.fn().mockResolvedValue(null);
+
+      const result = await sessionManager.calculateCumulativeTokens(testSessionId, mockSessionsDir);
+      
+      expect(result).toEqual({
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalTokens: 0,
+        transactionCount: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0
+      });
+    });
+
+    test('should prevent infinite loops in session chains', async () => {
+      const sessionA = 'session-a';
+      
+      // Create circular reference: A -> B -> A
+      sessionManager.getParentSessionId = jest.fn()
+        .mockImplementation((sessionId) => {
+          const parents = {
+            'session-a': 'session-b',
+            'session-b': 'session-a' // Circular!
+          };
+          return Promise.resolve(parents[sessionId] || null);
+        });
+
+      sessionManager.getSessionTokenUsage = jest.fn()
+        .mockResolvedValue({ totalInputTokens: 100, totalOutputTokens: 50, cacheReadTokens: 10, cacheCreationTokens: 5, transactionCount: 1, totalTokens: 150 });
+
+      const result = await sessionManager.calculateCumulativeTokens(sessionA, mockSessionsDir);
+      
+      // Should only process each session once
+      expect(result.totalInputTokens).toBe(200); // 100 + 100 (each session counted once)
+      expect(sessionManager.getSessionTokenUsage).toHaveBeenCalledTimes(2);
     });
   });
 });

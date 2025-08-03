@@ -17,8 +17,7 @@ class KeyboardHandlers {
     let concatButton = { text: '🔗 Concat On' };
     
     if (userId && this.mainBot.getConcatModeStatus && this.mainBot.getConcatModeStatus(userId)) {
-      const bufferCount = this.mainBot.getBufferSize ? this.mainBot.getBufferSize(userId) : 0;
-      concatButton = { text: `📤 Concat Send (${bufferCount})` };
+      concatButton = { text: '📤 Concat Send' };
     }
 
     return {

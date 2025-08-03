@@ -295,16 +295,53 @@ class TelegramFormatter {
    * Format session initialization (returns Markdown text)
    */
   formatSessionInit(sessionData) {
-    const { sessionId, model, cwd, tools, permissionMode } = sessionData;
+    const { sessionId, model, cwd, tools, permissionMode, thinkingMode, isContinuation, sessionTitle } = sessionData;
     
-    let text = '🚀 **Session Started**\n\n';
+    // Determine session type and add appropriate hashtag
+    const sessionType = isContinuation ? 'Continued' : 'New';
+    const hashtag = '#session_started';
+    
+    let text = `🚀 **${sessionType} Session Started** ${hashtag}\n\n`;
+    
+    // Add session title if this is a continued session and title is available
+    if (isContinuation && sessionTitle) {
+      text += `💡 **Session:** ${sessionTitle}\n\n`;
+    }
+    
     text += `🆔 **Session:** \`${sessionId ? sessionId.slice(-8) : 'Not started'}\`\n`;
     text += `🤖 **Model:** ${model || 'unknown'}\n`;
+    
+    // Add thinking mode information
+    if (thinkingMode) {
+      const thinkingDisplay = this.getThinkingModeDisplay(thinkingMode);
+      text += `🧠 **Thinking Mode:** ${thinkingDisplay}\n`;
+    }
+    
     text += `📁 **Directory:** \`${cwd || 'unknown'}\`\n`;
     text += `🔒 **Permissions:** ${permissionMode || 'unknown'}\n`;
     text += `🛠 **Tools:** ${tools ? tools.length : 0} available`;
     
+    // Add continuation indicator if this is a resumed session
+    if (isContinuation) {
+      text += '\n🔄 *Continuing from previous session*';
+    }
+    
     return text;
+  }
+
+  /**
+   * Get thinking mode display string
+   */
+  getThinkingModeDisplay(thinkingMode) {
+    const thinkingModes = {
+      'none': '🚫 None',
+      'light': '💡 Light',
+      'medium': '🧠 Medium', 
+      'deep': '🎯 Deep',
+      'max': '🚀 Maximum'
+    };
+    
+    return thinkingModes[thinkingMode] || `🤔 ${thinkingMode}`;
   }
 
   /**
@@ -314,7 +351,7 @@ class TelegramFormatter {
     const { success, cost, duration, usage } = result;
     
     const sessionIdText = sessionId ? sessionId.slice(-8) : 'unknown';
-    let text = `${success ? '✅' : '❌'} ${success ? `**Session** \`${sessionIdText}\` **ended**` : '**Execution Failed**'}\n\n`;
+    let text = `${success ? '✅' : '❌'} ${success ? `**Session** \`${sessionIdText}\` **ended** #session_ended` : '**Execution Failed**'}\n\n`;
     
     if (duration) {
       text += `⏱ **Duration:** ${(duration / 1000).toFixed(2)}s\n`;

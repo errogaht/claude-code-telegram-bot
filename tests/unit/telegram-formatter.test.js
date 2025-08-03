@@ -291,12 +291,31 @@ describe('TelegramFormatter', () => {
       };
       const result = formatter.formatSessionInit(sessionData);
       expect(typeof result).toBe('string');
-      expect(result).toContain('🚀 **Session Started**');
+      expect(result).toContain('🚀 **New Session Started** #session_started');
       expect(result).toContain('🆔 **Session:** `23def456`'); // last 8 chars
       expect(result).toContain('🤖 **Model:** claude-3');
       expect(result).toContain('📁 **Directory:** `/home/user/project`');
       expect(result).toContain('🔒 **Permissions:** ask');
       expect(result).toContain('🛠 **Tools:** 3 available');
+    });
+
+    test('should format continued session initialization', () => {
+      const sessionData = {
+        sessionId: 'abc123def456',
+        model: 'claude-sonnet-4',
+        cwd: '/home/user/project',
+        tools: ['read', 'write', 'bash'],
+        permissionMode: 'ask',
+        thinkingMode: 'deep',
+        isContinuation: true,
+        sessionTitle: 'Working on Claude bot enhancements'
+      };
+      const result = formatter.formatSessionInit(sessionData);
+      expect(typeof result).toBe('string');
+      expect(result).toContain('🚀 **Continued Session Started** #session_started');
+      expect(result).toContain('💡 **Session:** Working on Claude bot enhancements');
+      expect(result).toContain('🧠 **Thinking Mode:** 🎯 Deep');
+      expect(result).toContain('🔄 *Continuing from previous session*');
     });
 
     test('should format execution result', () => {
@@ -310,7 +329,7 @@ describe('TelegramFormatter', () => {
         'session123'
       );
       expect(typeof result).toBe('string');
-      expect(result).toContain('✅ **Session** `ssion123` **ended**');
+      expect(result).toContain('✅ **Session** `ssion123` **ended** #session_ended');
       expect(result).toContain('⏱ **Duration:** 5.50s');
       expect(result).toContain('💰 **Cost:** $0.0025');
       expect(result).toContain('🎯 **Tokens:** 150 (100 in, 50 out)');

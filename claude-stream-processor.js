@@ -139,7 +139,7 @@ class ClaudeStreamProcessor extends EventEmitter {
       // Build copyable command line
       const quotedArgs = args.map(arg => {
         // Quote arguments that contain spaces or special characters
-        if (arg.includes(' ') || arg.includes('"') || arg.includes("'")) {
+        if (arg.includes(' ') || arg.includes('"') || arg.includes('\'')) {
           return `"${arg.replace(/"/g, '\\"')}"`;
         }
         return arg;
