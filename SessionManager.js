@@ -33,6 +33,15 @@ class SessionManager {
       workingDirectory: this.options.workingDirectory
     });
 
+    // Get stored session ID to check if this is a continuation
+    const storedSessionId = this.getStoredSessionId(userId);
+    let previousTokenUsage = null;
+
+    // If we have a stored session, try to get its token usage for continuation
+    if (storedSessionId) {
+      previousTokenUsage = await this.getSessionTokenUsage(storedSessionId);
+    }
+
     const session = {
       userId,
       chatId,
@@ -42,7 +51,7 @@ class SessionManager {
       lastTodos: null,
       createdAt: new Date(),
       // Status monitoring fields
-      tokenUsage: {
+      tokenUsage: previousTokenUsage || {
         totalInputTokens: 0,
         totalOutputTokens: 0,
         totalTokens: 0,
@@ -53,7 +62,9 @@ class SessionManager {
       lastActivityTime: Date.now(),
       isStreamActive: false,
       isHealthy: true,
-      lastHealthCheck: Date.now()
+      lastHealthCheck: Date.now(),
+      isContinuation: !!previousTokenUsage,
+      autoCompactInProgress: false
     };
 
     // Setup event handlers for this processor
@@ -92,6 +103,12 @@ class SessionManager {
       
       // Update activity tracking
       this.updateSessionActivity(session);
+      
+      // Update token usage if present in assistant message
+      if (data.usage) {
+        this.updateTokenUsage(session, { usage: data.usage });
+        await this.checkAutoCompact(session, chatId);
+      }
       
       // Typing indicator continues automatically
       const formatted = this.formatter.formatAssistantText(data.text);
@@ -157,13 +174,16 @@ class SessionManager {
       console.log(`[User ${userId}] Tool result for: ${data.toolUseId}`);
     });
 
-    // Execution completion
-    processor.on('complete', async (data) => {
+    // Execution completion - listen for execution-result which has usage data
+    processor.on('execution-result', async (data) => {
       console.log(`[User ${userId}] Execution complete: ${data.success}`);
 
       // Update activity and token tracking
       this.updateSessionActivity(session);
       this.updateTokenUsage(session, data);
+
+      // Check for auto-compact after token update
+      await this.checkAutoCompact(session, chatId);
 
       // Stop typing indicator when Claude finishes
       await this.activityIndicator.stop(chatId);
@@ -174,6 +194,19 @@ class SessionManager {
 
       const formatted = this.formatter.formatExecutionResult(data, session.sessionId);
       await this.mainBot.safeSendMessage(chatId, formatted);
+    });
+
+    // Keep the legacy 'complete' event for backward compatibility (but without usage updates)
+    processor.on('complete', async (data) => {
+      console.log(`[User ${userId}] Process complete (legacy): ${data.success}`);
+      
+      // Only handle basic completion without token tracking since this event doesn't have usage data
+      this.updateSessionActivity(session);
+      await this.activityIndicator.stop(chatId);
+
+      // Clean up temp file if exists
+      const ImageHandler = require('./ImageHandler');
+      ImageHandler.cleanupTempFile(session, userId);
     });
 
     // Errors
@@ -506,7 +539,16 @@ class SessionManager {
   async showSessionStatus(chatId) {
     const userId = this.mainBot.getUserIdFromChat(chatId);
     const session = this.getUserSession(userId);
-    const storedSessionId = this.getStoredSessionId(userId);
+    let storedSessionId = this.getStoredSessionId(userId);
+    
+    // If no stored session from config file, check sessionStorage
+    if (!storedSessionId) {
+      const sessionStorage = this.sessionStorage.get(userId);
+      if (sessionStorage && sessionStorage.currentSessionId) {
+        storedSessionId = sessionStorage.currentSessionId;
+      }
+    }
+    
     const sessionHistory = this.getSessionHistory(userId);
 
     // Check if we have any session info (active or stored)
@@ -517,6 +559,18 @@ class SessionManager {
     }
 
     let text = '📊 **Session Status**\n\n';
+
+    // Get session summary/title for better identification
+    let sessionSummary = null;
+    const targetSessionId = session ? (session.sessionId || session.processor.getCurrentSessionId()) : storedSessionId;
+    if (targetSessionId) {
+      sessionSummary = await this.getSessionSummary(targetSessionId);
+    }
+
+    // Add session summary at the top if available
+    if (sessionSummary) {
+      text += `💡 **Current Work:** ${sessionSummary}\n\n`;
+    }
 
     if (session) {
       // Active session exists
@@ -540,18 +594,35 @@ class SessionManager {
       text += `💬 **Messages:** ${messageCount}\n`;
       text += `⏱ **Uptime:** ${uptime}s\n\n`;
       
-      // Token usage information
+      // Token usage information with context window ratio
       const tokens = session.tokenUsage;
+      const contextLimit = this.getContextWindowLimit(this.options.model);
+      
       if (tokens.transactionCount > 0) {
-        text += `🎯 **Tokens:** ${tokens.totalTokens} total\n`;
-        text += `   ↳ ${tokens.totalInputTokens} in, ${tokens.totalOutputTokens} out\n`;
+        // Calculate core tokens (excluding cache for context limit)
+        const coreTokens = tokens.totalInputTokens + tokens.totalOutputTokens - tokens.cacheReadTokens;
+        const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
+        
+        text += `🎯 **Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
+        text += `   ↳ ${tokens.totalInputTokens - tokens.cacheReadTokens} in, ${tokens.totalOutputTokens} out\n`;
         text += `   ↳ ${tokens.transactionCount} transaction${tokens.transactionCount > 1 ? 's' : ''}\n`;
+        
         if (tokens.cacheReadTokens > 0) {
-          text += `   ↳ ${tokens.cacheReadTokens} cache read\n`;
+          text += `💾 **Cache:** ${tokens.cacheReadTokens.toLocaleString()} read, ${tokens.cacheCreationTokens.toLocaleString()} created\n`;
         }
+        
+        if (session.isContinuation) {
+          text += '   ↳ 🔄 Continued from previous session\n';
+        }
+        
+        // Warning when approaching limit
+        if (usagePercentage > 80) {
+          text += '⚠️ **Close to limit - consider /compact soon**\n';
+        }
+        
         text += '\n';
       } else {
-        text += '🎯 **Tokens:** No usage data yet\n\n';
+        text += `🎯 **Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
       }
       
       // Activity and health status
@@ -564,8 +635,36 @@ class SessionManager {
       text += `📋 **Stored:** \`${storedSessionId.slice(-8)}\` **(can resume)**\n`;
       text += '📊 **Status:** ⏸️ **Paused (bot restarted)**\n';
       text += '💬 **Messages:** -\n';
-      text += '⏱ **Uptime:** -\n';
-      text += '\n💡 **Send a message to resume this session**\n';
+      text += '⏱ **Uptime:** -\n\n';
+      
+      // Get token usage from stored session
+      const storedTokens = await this.getSessionTokenUsage(storedSessionId);
+      const contextLimit = this.getContextWindowLimit(this.options.model);
+      
+      if (storedTokens && storedTokens.transactionCount > 0) {
+        // Calculate core tokens (excluding cache for context limit)
+        const coreTokens = storedTokens.totalInputTokens + storedTokens.totalOutputTokens - storedTokens.cacheReadTokens;
+        const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
+        
+        text += `🎯 **Stored Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
+        text += `   ↳ ${storedTokens.totalInputTokens - storedTokens.cacheReadTokens} in, ${storedTokens.totalOutputTokens} out\n`;
+        text += `   ↳ ${storedTokens.transactionCount} transaction${storedTokens.transactionCount > 1 ? 's' : ''}\n`;
+        
+        if (storedTokens.cacheReadTokens > 0) {
+          text += `💾 **Cache:** ${storedTokens.cacheReadTokens.toLocaleString()} read, ${storedTokens.cacheCreationTokens.toLocaleString()} created\n`;
+        }
+        
+        // Warning when approaching limit
+        if (usagePercentage > 80) {
+          text += '⚠️ **Close to limit - consider /compact soon**\n';
+        }
+        
+        text += '\n';
+      } else {
+        text += `🎯 **Stored Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
+      }
+      
+      text += '💡 **Send a message to resume this session**\n';
     }
 
     const path = require('path');
@@ -956,6 +1055,178 @@ class SessionManager {
   }
 
   /**
+   * Get token usage from Claude Code session file
+   */
+  async getSessionTokenUsage(sessionId, customSessionsDir = null) {
+    if (!sessionId) {
+      return null;
+    }
+
+    try {
+      const path = require('path');
+      const fs = require('fs').promises;
+      const os = require('os');
+
+      // Use custom sessions directory for testing, otherwise compute real one
+      let sessionsDir;
+      if (customSessionsDir) {
+        sessionsDir = customSessionsDir;
+      } else {
+        // Convert project path to Claude Code directory format
+        const projectPath = this.options.workingDirectory;
+        const claudeProjectDir = projectPath.replace(/\//g, '-').replace(/^-/, '');
+        sessionsDir = path.join(os.homedir(), '.claude', 'projects', `-${claudeProjectDir}`);
+      }
+      
+      const sessionFilePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+
+      // Check if session file exists
+      await fs.access(sessionFilePath);
+      
+      // Read the session file and parse token usage from result messages
+      const content = await fs.readFile(sessionFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+      
+      let totalInputTokens = 0;
+      let totalOutputTokens = 0;
+      let cacheReadTokens = 0;
+      let cacheCreationTokens = 0;
+      let transactionCount = 0;
+      
+      // Look for result messages with usage data
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          
+          // Check for usage in different message types
+          let usage = null;
+          if (data.type === 'result' && data.usage) {
+            usage = data.usage;
+          } else if (data.type === 'assistant' && data.message && data.message.usage) {
+            usage = data.message.usage;
+          } else if (data.usage) {
+            usage = data.usage;
+          }
+          
+          if (usage) {
+            totalInputTokens += parseInt(usage.input_tokens) || 0;
+            totalOutputTokens += parseInt(usage.output_tokens) || 0;
+            cacheReadTokens += parseInt(usage.cache_read_input_tokens) || 0;
+            cacheCreationTokens += parseInt(usage.cache_creation_input_tokens) || 0;
+            transactionCount += 1;
+          }
+        } catch {
+          // Skip invalid JSON lines
+          continue;
+        }
+      }
+      
+      // Only return token usage if we found some data
+      if (transactionCount > 0) {
+        return {
+          totalInputTokens: totalInputTokens + cacheReadTokens,
+          totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens + cacheReadTokens,
+          transactionCount,
+          cacheReadTokens,
+          cacheCreationTokens
+        };
+      }
+      
+      return null;
+      
+    } catch (error) {
+      // Session file not found or other error
+      console.error(`[SessionManager] Error reading session tokens for ${sessionId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get session summary from Claude Code session file
+   */
+  async getSessionSummary(sessionId, customSessionsDir = null) {
+    if (!sessionId) {
+      return null;
+    }
+
+    try {
+      const path = require('path');
+      const fs = require('fs').promises;
+      const os = require('os');
+
+      // Use custom sessions directory for testing, otherwise compute real one
+      let sessionsDir;
+      if (customSessionsDir) {
+        sessionsDir = customSessionsDir;
+      } else {
+        // Convert project path to Claude Code directory format
+        const projectPath = this.options.workingDirectory;
+        const claudeProjectDir = projectPath.replace(/\//g, '-').replace(/^-/, '');
+        sessionsDir = path.join(os.homedir(), '.claude', 'projects', `-${claudeProjectDir}`);
+      }
+      
+      const sessionFilePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+
+      // Check if session file exists
+      await fs.access(sessionFilePath);
+      
+      // Read the first few lines to find the summary
+      const content = await fs.readFile(sessionFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+      
+      // Look for summary in the first few lines
+      for (const line of lines.slice(0, 5)) {
+        try {
+          const data = JSON.parse(line);
+          if (data.type === 'summary' && data.summary) {
+            return data.summary;
+          }
+        } catch {
+          // Skip invalid JSON lines
+          continue;
+        }
+      }
+      
+      // If no summary found, try to extract from first user message
+      for (const line of lines.slice(0, 10)) {
+        try {
+          const data = JSON.parse(line);
+          if (data.type === 'user' && data.message && data.message.content && !data.isMeta) {
+            let content = data.message.content;
+            
+            // Handle array content
+            if (Array.isArray(content)) {
+              const textContent = content.find(item => item.type === 'text');
+              content = textContent ? textContent.text : null;
+            }
+            
+            if (typeof content === 'string' && content.trim()) {
+              // Extract meaningful part, skip command metadata
+              if (content.includes('<command-name>')) {
+                continue;
+              }
+              
+              // Truncate and return as fallback summary
+              const summary = content.length > 60 ? content.substring(0, 60) + '...' : content;
+              return summary;
+            }
+          }
+        } catch {
+          // Skip invalid JSON lines
+          continue;
+        }
+      }
+      
+      return null;
+      
+    } catch {
+      // Session file not found or other error
+      return null;
+    }
+  }
+
+  /**
    * Handle session resume from quick button
    */
   async handleSessionResume(sessionId, chatId, messageId, userId) {
@@ -1123,12 +1394,13 @@ class SessionManager {
    * Update token usage from execution data
    */
   updateTokenUsage(session, executionData) {
-    // Check if we have usage data
-    if (!executionData.usage) {
+    // Check if we have usage data or cost data (indicates usage even if tokens are 0)
+    if (!executionData.usage && !executionData.cost) {
       return;
     }
 
-    const usage = executionData.usage;
+    const usage = executionData.usage || {};
+    const cost = executionData.cost || 0;
     
     // Validate usage data
     const inputTokens = parseInt(usage.input_tokens) || 0;
@@ -1136,16 +1408,168 @@ class SessionManager {
     const cacheReadTokens = parseInt(usage.cache_read_input_tokens) || 0;
     const cacheCreationTokens = parseInt(usage.cache_creation_input_tokens) || 0;
 
-    // Only update if we have valid token data
-    if (inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheCreationTokens > 0) {
-      session.tokenUsage.totalInputTokens += inputTokens + cacheReadTokens;
-      session.tokenUsage.totalOutputTokens += outputTokens;
+    // Update if we have valid token data OR if there's a cost (indicating real usage)
+    const hasTokens = inputTokens > 0 || outputTokens > 0 || cacheReadTokens > 0 || cacheCreationTokens > 0;
+    const hasCost = cost > 0;
+
+    if (hasTokens || hasCost) {
+      // If tokens are 0 but there's cost, estimate token usage from cost
+      // Sonnet 4 costs: $12/1M input, $60/1M output (approximate)
+      let estimatedInputTokens = inputTokens;
+      let estimatedOutputTokens = outputTokens;
+
+      if (!hasTokens && hasCost) {
+        // Rough estimation: assume 70% input, 30% output cost split
+        const inputCost = cost * 0.7;
+        const outputCost = cost * 0.3;
+        estimatedInputTokens = Math.round((inputCost / 12) * 1000000);
+        estimatedOutputTokens = Math.round((outputCost / 60) * 1000000);
+        
+        console.log(`[User ${session.userId}] Estimated tokens from cost $${cost}: ${estimatedInputTokens} in, ${estimatedOutputTokens} out`);
+      }
+
+      session.tokenUsage.totalInputTokens += estimatedInputTokens + cacheReadTokens;
+      session.tokenUsage.totalOutputTokens += estimatedOutputTokens;
       session.tokenUsage.cacheReadTokens += cacheReadTokens;
       session.tokenUsage.cacheCreationTokens += cacheCreationTokens;
       session.tokenUsage.totalTokens = session.tokenUsage.totalInputTokens + session.tokenUsage.totalOutputTokens;
       session.tokenUsage.transactionCount += 1;
 
       console.log(`[User ${session.userId}] Token usage updated: ${session.tokenUsage.totalTokens} total (${session.tokenUsage.transactionCount} transactions)`);
+    }
+  }
+
+  /**
+   * Get context window limit for a given model
+   */
+  getContextWindowLimit(model) {
+    const contextLimits = {
+      'claude-4-opus': 200000,
+      'claude-4-sonnet': 200000,
+      'claude-sonnet-4-20250514': 200000,
+      'claude-3-5-sonnet-20241022': 200000,
+      'claude-3-5-sonnet': 200000,
+      'claude-3-opus': 200000,
+      'claude-3-haiku': 200000,
+      'opus': 200000,
+      'sonnet': 200000,
+      'haiku': 200000
+    };
+    
+    // Check exact match first
+    if (contextLimits[model]) {
+      return contextLimits[model];
+    }
+    
+    // Check partial matches
+    const modelLower = model.toLowerCase();
+    for (const [key, limit] of Object.entries(contextLimits)) {
+      if (modelLower.includes(key) || key.includes(modelLower)) {
+        return limit;
+      }
+    }
+    
+    // Default to 200k if unknown
+    return 200000;
+  }
+
+  /**
+   * Check if auto-compact should be triggered
+   */
+  async checkAutoCompact(session, chatId) {
+    try {
+      const tokens = session.tokenUsage;
+      
+      // Skip if auto-compact already in progress
+      if (session.autoCompactInProgress) {
+        return;
+      }
+      
+      // Skip if this session is already running a compact command
+      if (session.isCompactSession) {
+        return;
+      }
+      
+      // Only check if we have token data
+      if (!tokens || tokens.transactionCount === 0) {
+        return;
+      }
+      
+      // Calculate core tokens (excluding cache for context limit)
+      const coreTokens = tokens.totalInputTokens + tokens.totalOutputTokens - tokens.cacheReadTokens;
+      const contextLimit = this.getContextWindowLimit(this.options.model);
+      const usagePercentage = (coreTokens / contextLimit) * 100;
+      
+      console.log(`[User ${session.userId}] Context usage: ${coreTokens}/${contextLimit} (${usagePercentage.toFixed(1)}%)`);
+      
+      // Trigger auto-compact if less than 5% remaining (95% used)
+      if (usagePercentage >= 95) {
+        console.log(`[User ${session.userId}] Auto-compact triggered at ${usagePercentage.toFixed(1)}% usage`);
+        session.autoCompactInProgress = true;
+        await this.performAutoCompact(session, chatId);
+      }
+    } catch (error) {
+      console.error(`[User ${session.userId}] Error checking auto-compact:`, error);
+    }
+  }
+
+  /**
+   * Perform auto-compact: stop current process and restart with /compact
+   */
+  async performAutoCompact(session, chatId) {
+    try {
+      const userId = session.userId;
+      const currentSessionId = session.sessionId || session.processor.getCurrentSessionId();
+      
+      if (!currentSessionId) {
+        console.error(`[User ${userId}] Cannot perform auto-compact: no session ID`);
+        return;
+      }
+      
+      console.log(`[User ${userId}] Performing auto-compact for session ${currentSessionId.slice(-8)}`);
+      
+      // Send notification to user
+      await this.mainBot.safeSendMessage(chatId, 
+        '🔄 **Auto-compact triggered**\n\n' +
+        '⚠️ Context window nearly full (>95%)\n' +
+        '🛠️ Compacting session automatically...\n\n' +
+        '⏳ Please wait...'
+      );
+      
+      // Stop current process
+      if (session.processor && session.processor.isActive()) {
+        session.processor.cancel();
+      }
+      
+      // Wait a bit for cleanup
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Store current session and clean up
+      if (currentSessionId) {
+        this.addSessionToHistory(userId, currentSessionId);
+        this.storeSessionId(userId, currentSessionId);
+      }
+      
+      // Remove from active processors
+      this.activeProcessors.delete(session.processor);
+      this.deleteUserSession(userId);
+      
+      // Create new session for compact
+      const newSession = await this.createUserSession(userId, chatId);
+      
+      // Mark this as a compact session to prevent recursive auto-compact
+      newSession.isCompactSession = true;
+      
+      // Resume with /compact command
+      console.log(`[User ${userId}] Resuming session ${currentSessionId.slice(-8)} with /compact`);
+      await newSession.processor.resumeSession(currentSessionId, '/compact');
+      
+    } catch (error) {
+      console.error(`[User ${session.userId}] Error performing auto-compact:`, error);
+      await this.mainBot.safeSendMessage(chatId, 
+        '❌ **Auto-compact failed**\n\n' +
+        'Please try running `/compact` manually.'
+      );
     }
   }
 

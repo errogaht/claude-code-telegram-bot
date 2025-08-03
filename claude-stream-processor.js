@@ -356,7 +356,8 @@ class ClaudeStreamProcessor extends EventEmitter {
             this.emit('assistant-text', {
               text: item.text,
               messageId: message.message.id,
-              sessionId: message.session_id
+              sessionId: message.session_id,
+              usage: message.message.usage // Include usage if present
             });
           }
           

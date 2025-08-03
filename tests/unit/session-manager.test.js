@@ -288,15 +288,41 @@ describe('SessionManager', () => {
       expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
     });
 
-    test('should handle complete event', async () => {
-      const completeData = { success: true, cost: 0.01, duration: 5000 };
+    test('should handle execution-result event with token tracking', async () => {
+      const executionData = { 
+        success: true, 
+        cost: 0.01, 
+        duration: 5000,
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_read_input_tokens: 25,
+          cache_creation_input_tokens: 10
+        }
+      };
+
+      mockProcessor.emit('execution-result', executionData);
+      await new Promise(resolve => process.nextTick(resolve));
+
+      expect(mockActivityIndicator.stop).toHaveBeenCalledWith('chat456');
+      expect(mockFormatter.formatExecutionResult).toHaveBeenCalledWith(executionData, session.sessionId);
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+      
+      // Check token usage was updated
+      expect(session.tokenUsage.totalInputTokens).toBe(125); // 100 + 25 cache
+      expect(session.tokenUsage.totalOutputTokens).toBe(50);
+      expect(session.tokenUsage.transactionCount).toBe(1);
+    });
+
+    test('should handle legacy complete event without token tracking', async () => {
+      const completeData = { success: true };
 
       mockProcessor.emit('complete', completeData);
       await new Promise(resolve => process.nextTick(resolve));
 
       expect(mockActivityIndicator.stop).toHaveBeenCalledWith('chat456');
-      expect(mockFormatter.formatExecutionResult).toHaveBeenCalledWith(completeData, session.sessionId);
-      expect(mockMainBot.safeSendMessage).toHaveBeenCalled();
+      // Should not call formatExecutionResult for legacy complete event
+      expect(mockFormatter.formatExecutionResult).not.toHaveBeenCalled();
     });
 
     test('should handle error event', async () => {
