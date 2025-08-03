@@ -92,13 +92,14 @@ class KeyboardHandlers {
       await this.mainBot.sessionManager.showSessionHistory(chatId);
       return true;
         
-    case '📍 Path':
+    case '📍 Path': {
       console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
       const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
       await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
         reply_markup: this.createReplyKeyboard(userId)
       });
       return true;
+    }
         
     case '🤖 Model':
       console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
@@ -252,7 +253,6 @@ class KeyboardHandlers {
     const { 
       showOverview = true, 
       showFileList = true, 
-      currentFile = null,
       hasNextChunk = false,
       hasPrevChunk = false,
       currentChunk = 0,

@@ -3,10 +3,10 @@
  * Converts Claude tool calls and results to Telegram-friendly format
  */
 
-const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+// const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
 
 class TelegramFormatter {
-  constructor(options = {}) {
+  constructor(_options = {}) {
     // Always HTML mode now - no more dual mode
     this.mode = 'html';
     
@@ -65,7 +65,7 @@ class TelegramFormatter {
   /**
    * Format thinking message (returns Markdown text)
    */
-  formatThinking(thinking, signature) {
+  formatThinking(thinking, _signature) {
     const text = `🤔 **Claude is thinking...**\n\n\`\`\`\n${thinking}\n\`\`\``;
     return text;
   }
@@ -73,7 +73,7 @@ class TelegramFormatter {
   /**
    * Format TodoWrite tool call and result (returns Markdown text)
    */
-  formatTodoWrite(todos, toolResult = null) {
+  formatTodoWrite(todos, _toolResult = null) {
     let text = `${this.toolIcons.todowrite} **Todo List**\n\n`;
     
     // Count todos by status
@@ -115,7 +115,7 @@ class TelegramFormatter {
       
       text += `**${statusNames[status]}** (${statusTodos.length})\n`;
       
-      statusTodos.forEach((todo, idx) => {
+      statusTodos.forEach((todo) => {
         const priority = todo.priority ? ` ${this.priorityBadges[todo.priority]}` : '';
         const content = todo.content;
         
@@ -416,7 +416,7 @@ class TelegramFormatter {
     return text
       .replace(/`/g, '\'')  // Replace backticks with single quotes
       .replace(/\r/g, '')  // Remove carriage returns
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // Remove control characters
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '') // eslint-disable-line no-control-regex
       .replace(/[\u{1F600}-\u{1F6FF}]/gu, '[emoji]') // Replace emojis that might break parsing
       .replace(/[\u{2600}-\u{26FF}]/gu, '[symbol]') // Replace symbols that might break parsing
       .trim(); // Remove leading/trailing whitespace

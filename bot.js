@@ -142,6 +142,11 @@ class StreamTelegramBot {
             return; // Button handled, don't process as regular message
           }
 
+          // Check if GitManager needs to handle this text input (e.g., branch creation)
+          if (await this.gitManager.handleTextInput(chatId, msg.text)) {
+            return; // GitManager handled the text input
+          }
+
           console.log('[COMPONENT] StreamTelegramBot.handleUserMessage - processing regular text message');
           await this.handleUserMessage(msg);
         }
@@ -463,7 +468,7 @@ class StreamTelegramBot {
   /**
    * Send session initialization message
    */
-  async sendSessionInit(chatId, session) {
+  async sendSessionInit(chatId, _session) {
     const text = '🚀 **New Session Started**\n\n' +
       'Ready to process your requests with Claude CLI stream-json mode.\n\n' +
       '🔄 Session continuity with ID tracking\n' +
@@ -854,8 +859,8 @@ class StreamTelegramBot {
    * Safely send message with proper Telegram markdown sanitization
    */
   async safeSendMessage(chatId, text, options = {}) {
+    let htmlText = text;
     try {
-      let htmlText = text;
       
       // Convert markdown to HTML if text doesn't already contain HTML tags
       const containsHtml = /<[^>]+>/.test(text);
@@ -875,7 +880,7 @@ class StreamTelegramBot {
       
       // Keep existing notification logic (don't break existing behavior)
       const shouldNotify = this.shouldSendWithNotification(text, options);
-      if (!shouldNotify && !messageOptions.hasOwnProperty('disable_notification')) {
+      if (!shouldNotify && !Object.prototype.hasOwnProperty.call(messageOptions, 'disable_notification')) {
         messageOptions.disable_notification = true;
       }
       
@@ -893,15 +898,15 @@ class StreamTelegramBot {
       // Enhanced error logging with full message content for HTML parsing errors
       if (parsedError.message.includes('Invalid HTML tag') || parsedError.message.includes('position')) {
         console.error(`[SafeSendMessage] Original text that caused the error (length: ${text.length}):`);
-        console.error(`[SafeSendMessage] ===== ORIGINAL TEXT START =====`);
+        console.error('[SafeSendMessage] ===== ORIGINAL TEXT START =====');
         console.error(text);
-        console.error(`[SafeSendMessage] ===== ORIGINAL TEXT END =====`);
+        console.error('[SafeSendMessage] ===== ORIGINAL TEXT END =====');
         
         if (htmlText !== text) {
           console.error(`[SafeSendMessage] Converted HTML (length: ${htmlText.length}):`);
-          console.error(`[SafeSendMessage] ===== HTML TEXT START =====`);
+          console.error('[SafeSendMessage] ===== HTML TEXT START =====');
           console.error(htmlText);
-          console.error(`[SafeSendMessage] ===== HTML TEXT END =====`);
+          console.error('[SafeSendMessage] ===== HTML TEXT END =====');
         }
       }
       
@@ -1028,7 +1033,7 @@ class StreamTelegramBot {
   /**
    * Handle model selection callback
    */
-  async handleModelCallback(data, chatId, messageId, userId) {
+  async handleModelCallback(data, chatId, messageId, _userId) {
     const action = data.replace('model:', '');
     
     if (action === 'refresh') {

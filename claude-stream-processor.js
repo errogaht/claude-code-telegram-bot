@@ -350,7 +350,7 @@ class ClaudeStreamProcessor extends EventEmitter {
       const content = message.message.content;
       
       if (Array.isArray(content)) {
-        content.forEach((item, index) => {
+        content.forEach((item) => {
           if (item.type === 'text') {
             // Claude's thoughts/text
             this.emit('assistant-text', {

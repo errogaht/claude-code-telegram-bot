@@ -208,6 +208,15 @@ If Nexara API is configured:
 - 👥 **Separate admin users** for each bot
 - 🔒 **Isolated session storage**
 
+### 🔄 Git Workflow Management
+- 📊 **Comprehensive git interface** - complete git workflow through Telegram
+- 🌿 **Branch management** - create, switch, list branches with validation
+- 📦 **Staging operations** - stage/unstage files individually or in bulk
+- 📝 **Smart file view** - examine diffs with context-aware staging buttons
+- 📱 **Mobile-optimized UI** - pagination and touch-friendly controls
+- ⚡ **Real-time status** - live git status with ahead/behind tracking
+- 🔄 **Interactive workflows** - guided git operations with error handling
+
 ### 🔒 Security
 - 👤 **Admin-only access** - only configured users can use the bot
 - ✅ **Command confirmation** for voice messages
@@ -306,6 +315,41 @@ pm2 monit
 # Process information
 pm2 info bot1
 ```
+
+### 🔄 Using Git Workflow Features
+
+The bot includes a comprehensive Git management interface accessible through Telegram:
+
+#### 📊 Git Overview
+- Send `/start` or click the git button to access the main git interface
+- View current branch, ahead/behind status, file counts
+- Navigate to branches, staging, files, and remote operations
+
+#### 🌿 Branch Management
+- **View branches**: See current branch with ahead/behind tracking
+- **Switch branches**: Safe switching with uncommitted changes handling
+- **Create branches**: Text input with full git validation
+  - Type branch name when prompted
+  - Automatic validation against git naming rules
+  - Conflict detection for existing branches
+
+#### 📦 Staging Operations
+- **Staging overview**: Separate sections for staged/modified/untracked files
+- **Individual file staging**: Stage/unstage specific files from file view
+- **Bulk operations**: Stage All / Unstage All with smart state handling
+- **File selection**: Paginated interfaces for selecting multiple files
+
+#### 📝 File Operations
+- **File browsing**: Navigate through changed files with pagination
+- **Diff viewing**: Examine file changes with configurable context
+- **Smart buttons**: Context-aware staging/unstaging buttons per file
+- **Mobile-optimized**: Touch-friendly interface with clear navigation
+
+#### 🎯 Workflow Tips
+- Use the **📦 Staging** button from any interface for quick access
+- **File view** shows real-time staging status for each file
+- **Error handling** provides helpful guidance for git issues
+- All operations include **confirmation and next steps** guidance
 
 ## 👨‍💻 Development
 

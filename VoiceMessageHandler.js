@@ -109,7 +109,7 @@ class VoiceMessageHandler {
         await this.mainBot.safeEditMessage(chatId, messageId, 
           '❌ *Voice command expired*\n\nPlease send a new voice message.'
         );
-      } catch (error) {
+      } catch {
         // Silently handle edit errors for expired commands
       }
       return;
@@ -161,7 +161,7 @@ class VoiceMessageHandler {
         
         // Keep in pending for manual text input
       }
-    } catch (error) {
+    } catch {
       // Silently handle edit errors for callback operations
     }
   }

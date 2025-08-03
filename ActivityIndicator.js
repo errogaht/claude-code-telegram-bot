@@ -53,7 +53,7 @@ class ActivityIndicator {
   // Emergency cleanup - stops all indicators
   cleanup() {
     console.log(`[ActivityIndicator] Emergency cleanup - stopping ${this.activeIndicators.size} typing indicators`);
-    for (const [_chatId, indicator] of this.activeIndicators) {
+    for (const [, indicator] of this.activeIndicators) {
       clearInterval(indicator.typingInterval);
     }
     this.activeIndicators.clear();
