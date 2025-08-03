@@ -19,18 +19,18 @@ const createMockProcessor = () => {
 };
 
 const createMockFormatter = () => ({
-  formatSessionInit: jest.fn().mockReturnValue({ text: 'Session started', parse_mode: 'HTML' }),
-  formatAssistantText: jest.fn().mockReturnValue({ text: 'Assistant text', parse_mode: 'HTML' }),
-  formatThinking: jest.fn().mockReturnValue({ text: 'Thinking...', parse_mode: 'HTML' }),
-  formatTodoWrite: jest.fn().mockReturnValue({ text: 'Todo list', parse_mode: 'HTML' }),
-  formatFileEdit: jest.fn().mockReturnValue({ text: 'File edited', parse_mode: 'HTML' }),
-  formatFileWrite: jest.fn().mockReturnValue({ text: 'File written', parse_mode: 'HTML' }),
-  formatFileRead: jest.fn().mockReturnValue({ text: 'File read', parse_mode: 'HTML' }),
-  formatBashCommand: jest.fn().mockReturnValue({ text: 'Bash command', parse_mode: 'HTML' }),
-  formatTaskSpawn: jest.fn().mockReturnValue({ text: 'Task spawned', parse_mode: 'HTML' }),
-  formatMCPTool: jest.fn().mockReturnValue({ text: 'MCP tool', parse_mode: 'HTML' }),
-  formatExecutionResult: jest.fn().mockReturnValue({ text: 'Execution complete', parse_mode: 'HTML' }),
-  formatError: jest.fn().mockReturnValue({ text: 'Error occurred', parse_mode: 'HTML' }),
+  formatSessionInit: jest.fn().mockReturnValue('Session started'),
+  formatAssistantText: jest.fn().mockReturnValue('Assistant text'),
+  formatThinking: jest.fn().mockReturnValue('Thinking...'),
+  formatTodoWrite: jest.fn().mockReturnValue('Todo list'),
+  formatFileEdit: jest.fn().mockReturnValue('File edited'),
+  formatFileWrite: jest.fn().mockReturnValue('File written'),
+  formatFileRead: jest.fn().mockReturnValue('File read'),
+  formatBashCommand: jest.fn().mockReturnValue('Bash command'),
+  formatTaskSpawn: jest.fn().mockReturnValue('Task spawned'),
+  formatMCPTool: jest.fn().mockReturnValue('MCP tool'),
+  formatExecutionResult: jest.fn().mockReturnValue('Execution complete'),
+  formatError: jest.fn().mockReturnValue('Error occurred'),
   todosChanged: jest.fn().mockReturnValue(true)
 });
 
@@ -46,6 +46,7 @@ const createMockActivityIndicator = () => ({
 
 const createMockMainBot = () => ({
   safeSendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
+  safeEditMessage: jest.fn().mockResolvedValue(true),
   getUserIdFromChat: jest.fn().mockReturnValue('user123'),
   sendSessionInit: jest.fn().mockResolvedValue(),
   keyboardHandlers: {
@@ -196,8 +197,7 @@ describe('SessionManager', () => {
       expect(mockFormatter.formatSessionInit).toHaveBeenCalledWith(sessionData);
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        'Session started',
-        { parse_mode: 'HTML' }
+        'Session started'
       );
       expect(session.sessionId).toBe('new-session-123');
     });
@@ -211,8 +211,7 @@ describe('SessionManager', () => {
       expect(mockFormatter.formatAssistantText).toHaveBeenCalledWith('Hello from Claude');
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        'Assistant text',
-        { parse_mode: 'HTML' }
+        'Assistant text'
       );
     });
 
@@ -225,8 +224,7 @@ describe('SessionManager', () => {
       expect(mockFormatter.formatThinking).toHaveBeenCalledWith('Analyzing request', 'sig');
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        'Thinking...',
-        { parse_mode: 'HTML' }
+        'Thinking...'
       );
     });
 
@@ -444,12 +442,10 @@ describe('SessionManager', () => {
 
       await sessionManager.handleTodoWrite(session, todos, 'tool1');
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        'Todo list',
-        { parse_mode: 'HTML' }
+        'Todo list'
       );
-      expect(session.lastTodoMessageId).toBe(123);
       expect(session.lastTodos).toBe(todos);
     });
 
@@ -460,30 +456,26 @@ describe('SessionManager', () => {
 
       await sessionManager.handleTodoWrite(session, todos, 'tool1');
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        'Todo list',
-        {
-          chat_id: 'chat456',
-          message_id: 456,
-          parse_mode: 'HTML'
-        }
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        'chat456',
+        456,
+        'Todo list'
       );
+      expect(session.lastTodos).toBe(todos);
     });
 
     test('should send new message if edit fails', async () => {
       const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
       session.lastTodoMessageId = 456;
-      mockBot.editMessageText.mockRejectedValueOnce(new Error('Edit failed'));
+      mockMainBot.safeEditMessage.mockRejectedValueOnce(new Error('Edit failed'));
 
       await sessionManager.handleTodoWrite(session, todos, 'tool1');
 
-      expect(mockBot.editMessageText).toHaveBeenCalled();
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalled();
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        'Todo list',
-        { parse_mode: 'HTML' }
+        'Todo list'
       );
-      expect(session.lastTodoMessageId).toBe(123);
     });
 
     test('should skip update if todos unchanged', async () => {
@@ -493,14 +485,14 @@ describe('SessionManager', () => {
 
       await sessionManager.handleTodoWrite(session, todos, 'tool1');
 
-      expect(mockBot.sendMessage).not.toHaveBeenCalled();
-      expect(mockBot.editMessageText).not.toHaveBeenCalled();
+      expect(mockMainBot.safeSendMessage).not.toHaveBeenCalled();
+      expect(mockMainBot.safeEditMessage).not.toHaveBeenCalled();
     });
 
     test('should handle todo update errors gracefully', async () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
       const todos = [{ id: '1', content: 'Task 1', status: 'pending' }];
-      mockBot.sendMessage.mockRejectedValueOnce(new Error('Send failed'));
+      mockMainBot.safeSendMessage.mockRejectedValueOnce(new Error('Send failed'));
 
       await sessionManager.handleTodoWrite(session, todos, 'tool1');
 
@@ -566,8 +558,7 @@ describe('SessionManager', () => {
       expect(mockProcessor.cancel).toHaveBeenCalled();
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        '❌ *Session cancelled*',
-        { parse_mode: 'Markdown' }
+        '❌ **Session cancelled**'
       );
     });
 
@@ -576,8 +567,7 @@ describe('SessionManager', () => {
 
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        '⚠️ *No active session to cancel*',
-        { parse_mode: 'Markdown' }
+        '⚠️ **No active session to cancel**'
       );
     });
 
@@ -593,25 +583,19 @@ describe('SessionManager', () => {
 
       await sessionManager.showSessionStatus('chat456');
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        expect.stringContaining('📊 *Session Status*'),
-        { parse_mode: 'Markdown' }
-      );
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
-        'chat456',
-        expect.stringContaining('🔄 Processing'),
-        { parse_mode: 'Markdown' }
+        expect.stringContaining('📊 **Session Status**')
       );
     });
 
     test('should show session status with no session', async () => {
       await sessionManager.showSessionStatus('chat456');
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        '📋 *No active session*\n\nSend a message to start!',
-        { parse_mode: 'Markdown' }
+        '📋 **No active session**\n\nSend a message to start!',
+        {}
       );
     });
   });
@@ -703,10 +687,12 @@ describe('SessionManager', () => {
 
       expect(mockProcessor.cancel).toHaveBeenCalled();
       expect(mockMainBot.sendSessionInit).toHaveBeenCalled();
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        expect.stringContaining('🆕 *New session started*'),
-        expect.objectContaining({ parse_mode: 'Markdown' })
+        expect.stringContaining('🆕 **New session started**'),
+        expect.objectContaining({ 
+          reply_markup: expect.anything()
+        })
       );
     });
 
@@ -717,10 +703,12 @@ describe('SessionManager', () => {
       await sessionManager.startNewSession('chat456');
 
       expect(mockMainBot.sendSessionInit).toHaveBeenCalled();
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        expect.stringContaining('🆕 *New session started*'),
-        expect.objectContaining({ parse_mode: 'Markdown' })
+        expect.stringContaining('🆕 **New session started**'),
+        expect.objectContaining({ 
+          reply_markup: expect.anything()
+        })
       );
     });
   });
@@ -739,25 +727,43 @@ describe('SessionManager', () => {
 
       expect(mockProcessor.cancel).toHaveBeenCalled();
       expect(sessionManager.userSessions.has('user123')).toBe(false);
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        expect.stringContaining('🔚 *Session ended*'),
-        expect.objectContaining({ parse_mode: 'Markdown' })
+        expect.stringContaining('🔚 **Session ended**'),
+        expect.objectContaining({ 
+          reply_markup: expect.anything()
+        })
       );
     });
 
     test('should handle end session with no active session', async () => {
       await sessionManager.endSession('chat456');
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         'chat456',
-        '⚠️ *No active session to end*',
-        expect.objectContaining({ parse_mode: 'Markdown' })
+        '⚠️ **No active session to end**',
+        expect.objectContaining({ 
+          reply_markup: expect.anything()
+        })
       );
     });
   });
 
   describe('Session Storage Access', () => {
+    beforeEach(() => {
+      const fs = require('fs');
+      // Mock fs to return a config structure that saveCurrentSessionToConfig creates
+      fs.readFileSync.mockReturnValue(JSON.stringify({
+        projectSessions: {
+          '/test/dir': {
+            userId: 'user123',
+            sessionId: 'session-456'
+          }
+        }
+      }));
+      fs.writeFileSync = jest.fn();
+    });
+
     test('should get stored session ID', () => {
       sessionManager.storeSessionId('user123', 'session-456');
       

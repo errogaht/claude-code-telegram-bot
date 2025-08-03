@@ -247,7 +247,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      const call = mockBot.sendMessage.mock.calls[0];
+      const call = mockBot.safeSendMessage.mock.calls[0];
       const keyboard = call[2].reply_markup.inline_keyboard;
 
       expect(keyboard).toHaveLength(3); // 2 projects + refresh button
@@ -271,7 +271,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      const call = mockBot.sendMessage.mock.calls[0];
+      const call = mockBot.safeSendMessage.mock.calls[0];
       const keyboard = call[2].reply_markup.inline_keyboard;
 
       expect(keyboard[0]).toEqual([{
@@ -290,7 +290,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      const call = mockBot.sendMessage.mock.calls[0];
+      const call = mockBot.safeSendMessage.mock.calls[0];
       const keyboard = call[2].reply_markup.inline_keyboard;
 
       expect(keyboard).toHaveLength(16); // 15 projects + refresh button
@@ -328,7 +328,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockBot.safeSendMessage).toHaveBeenCalledWith(
         123,
         expect.stringContaining('📁 *Current Directory*\n/current/project'),
         expect.any(Object)
@@ -381,7 +381,7 @@ describe('ProjectNavigator', () => {
 
   describe('Error Handling', () => {
     test('should handle bot sendMessage errors', async () => {
-      mockBot.sendMessage.mockRejectedValueOnce(new Error('Send failed'));
+      mockBot.safeSendMessage.mockRejectedValueOnce(new Error('Send failed'));
       projectNavigator.getClaudeProjects = jest.fn().mockReturnValue([]);
 
       await expect(projectNavigator.showProjectSelection(123)).rejects.toThrow('Send failed');
@@ -435,9 +435,9 @@ describe('ProjectNavigator', () => {
       await projectNavigator.showProjectSelection(123);
 
       // Should send message with keyboard
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        expect.stringContaining('📋 *Select Claude Project:*'),
+        expect.stringContaining('📋 **Select Claude Project:**'),
         expect.objectContaining({
           reply_markup: expect.objectContaining({
             inline_keyboard: expect.arrayContaining([
@@ -460,7 +460,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      const call = mockBot.sendMessage.mock.calls[0];
+      const call = mockBot.safeSendMessage.mock.calls[0];
       const keyboard = call[2].reply_markup.inline_keyboard;
 
       expect(keyboard[0]).toEqual([{
@@ -498,7 +498,7 @@ describe('ProjectNavigator', () => {
 
       await projectNavigator.showProjectSelection(123);
 
-      const call = mockBot.sendMessage.mock.calls[0];
+      const call = mockBot.safeSendMessage.mock.calls[0];
       const keyboard = call[2].reply_markup.inline_keyboard;
 
       expect(keyboard[0][0].text).toBe('📁 my-awesome-project');

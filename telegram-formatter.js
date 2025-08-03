@@ -58,6 +58,7 @@ class TelegramFormatter {
    */
   formatAssistantText(text) {
     // Return plain text - safeSendMessage will handle conversion
+    if (!text) return '';
     return text;
   }
 

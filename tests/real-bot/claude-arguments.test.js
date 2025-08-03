@@ -47,11 +47,12 @@ describe('Claude CLI Arguments Validation', () => {
       
       const claudeCall = registry[0];
       expect(claudeCall.args).toEqual([
-        '-p', testMessage,
+        '-p',
         '--model', 'sonnet',
         '--output-format', 'stream-json',
         '--verbose',
-        '--dangerously-skip-permissions'
+        '--dangerously-skip-permissions',
+        testMessage
       ]);
       
       expect(claudeCall.workingDirectory).toBe(path.join(__dirname, '../../'));
@@ -185,8 +186,8 @@ describe('Claude CLI Arguments Validation', () => {
       
       // Should have message content
       expect(claudeCall.args).toContain('-p');
-      const promptIndex = claudeCall.args.indexOf('-p');
-      expect(claudeCall.args[promptIndex + 1]).toBe('Test required arguments');
+      // Prompt is now at the end of arguments
+      expect(claudeCall.args[claudeCall.args.length - 1]).toBe('Test required arguments');
     });
 
     it('should not spawn real Claude process in test environment', async () => {
@@ -244,8 +245,8 @@ describe('Claude CLI Arguments Validation', () => {
       const claudeCall = registry[0];
       
       // Should properly escape or handle special characters
-      const promptIndex = claudeCall.args.indexOf('-p');
-      expect(claudeCall.args[promptIndex + 1]).toBe(specialMessage);
+      // Prompt is now at the end of arguments
+      expect(claudeCall.args[claudeCall.args.length - 1]).toBe(specialMessage);
     });
 
     it('should handle very long messages', async () => {
@@ -258,9 +259,9 @@ describe('Claude CLI Arguments Validation', () => {
       
       const claudeCall = registry[0];
       
-      const promptIndex = claudeCall.args.indexOf('-p');
-      expect(claudeCall.args[promptIndex + 1]).toBe(longMessage);
-      expect(claudeCall.args[promptIndex + 1].length).toBe(5000);
+      // Prompt is now at the end of arguments
+      expect(claudeCall.args[claudeCall.args.length - 1]).toBe(longMessage);
+      expect(claudeCall.args[claudeCall.args.length - 1].length).toBe(5000);
     });
   });
 });

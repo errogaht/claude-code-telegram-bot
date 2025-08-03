@@ -76,6 +76,10 @@ describe('KeyboardHandlers', () => {
             { text: '🧠 Thinking' },
             { text: '📍 Path' },
             { text: '📁 Git' }
+          ],
+          [
+            { text: '🔗 Concat On' },
+            { text: '🔄 Restart Bot' }
           ]
         ],
         resize_keyboard: true,
@@ -86,14 +90,17 @@ describe('KeyboardHandlers', () => {
     test('should have consistent keyboard structure', () => {
       const keyboard = keyboardHandlers.createReplyKeyboard();
 
-      expect(keyboard.keyboard).toHaveLength(3);
-      keyboard.keyboard.forEach(row => {
+      expect(keyboard.keyboard).toHaveLength(4);
+      // First 3 rows should have 3 buttons each
+      keyboard.keyboard.slice(0, 3).forEach(row => {
         expect(row).toHaveLength(3);
         row.forEach(button => {
           expect(button).toHaveProperty('text');
           expect(typeof button.text).toBe('string');
         });
       });
+      // Last row (concat buttons) should have 2 buttons
+      expect(keyboard.keyboard[3]).toHaveLength(2);
     });
   });
 
@@ -107,7 +114,7 @@ describe('KeyboardHandlers', () => {
       expect(mockMainBot.sessionManager.cancelUserSession).toHaveBeenCalledWith(123);
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        '🛑 *Emergency Stop*\n\nAll processes stopped.',
+        '🛑 **Emergency Stop**\n\nAll processes stopped.',
         {
           forceNotification: true,
           reply_markup: keyboardHandlers.createReplyKeyboard()
@@ -142,7 +149,7 @@ describe('KeyboardHandlers', () => {
       expect(mockMainBot.sessionManager.startNewSession).toHaveBeenCalledWith(123);
       expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        '🔄 *New Session*\n\nOld session ended, new session started.',
+        '🔄 **New Session**\n\nOld session ended, new session started.',
         {
           forceNotification: true,
           reply_markup: keyboardHandlers.createReplyKeyboard()
@@ -166,11 +173,10 @@ describe('KeyboardHandlers', () => {
 
       expect(result).toBe(true);
       expect(mockMainBot.sessionManager.getCurrentDirectory).toHaveBeenCalledWith(456);
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         123,
-        '📍 *Current Path:*\n\n`/test/project`',
+        '📍 **Current Path:**\n\n`/test/project`',
         {
-          parse_mode: 'Markdown',
           reply_markup: keyboardHandlers.createReplyKeyboard()
         }
       );
@@ -448,7 +454,7 @@ describe('KeyboardHandlers', () => {
 
   describe('Error Handling', () => {
     test('should handle bot sendMessage errors', async () => {
-      mockBot.sendMessage.mockRejectedValueOnce(new Error('Send failed'));
+      mockMainBot.safeSendMessage.mockRejectedValueOnce(new Error('Send failed'));
       const msg = createMockMessage('📍 Path');
 
       await expect(keyboardHandlers.handleKeyboardButton(msg)).rejects.toThrow('Send failed');

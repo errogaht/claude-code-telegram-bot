@@ -23,6 +23,13 @@ const createMockBot = () => ({
   editMessageText: jest.fn().mockResolvedValue(true)
 });
 
+const createMockMainBot = () => ({
+  safeSendMessage: jest.fn().mockResolvedValue({ message_id: 123 }),
+  safeEditMessage: jest.fn().mockResolvedValue(true),
+  getConcatModeStatus: jest.fn().mockReturnValue(false),
+  addToMessageBuffer: jest.fn().mockResolvedValue(1)
+});
+
 const createMockActivityIndicator = () => ({
   start: jest.fn().mockResolvedValue(),
   stop: jest.fn().mockResolvedValue()
@@ -38,6 +45,7 @@ const createMockVoiceMessage = (overrides = {}) => ({
 describe('VoiceMessageHandler', () => {
   let voiceHandler;
   let mockBot;
+  let mockMainBot;
   let mockActivityIndicator;
   let mockAxios;
   let mockFormData;
@@ -47,6 +55,7 @@ describe('VoiceMessageHandler', () => {
     delete process.env.NODE_ENV;
     
     mockBot = createMockBot();
+    mockMainBot = createMockMainBot();
     mockActivityIndicator = createMockActivityIndicator();
     mockAxios = axios;
     mockFormData = {
@@ -57,7 +66,7 @@ describe('VoiceMessageHandler', () => {
     FormData.mockClear();
     FormData.mockImplementation(() => mockFormData);
 
-    voiceHandler = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator);
+    voiceHandler = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator, mockMainBot);
 
     jest.clearAllMocks();
   });
@@ -160,11 +169,10 @@ describe('VoiceMessageHandler', () => {
 
       await voiceHandler.handleVoiceMessage(voiceMsg);
 
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         456,
         expect.stringContaining('🎤 *Voice Message Received*'),
         expect.objectContaining({
-          parse_mode: 'Markdown',
           reply_markup: expect.objectContaining({
             inline_keyboard: expect.arrayContaining([
               expect.arrayContaining([
@@ -409,13 +417,10 @@ describe('VoiceMessageHandler', () => {
         mockProcessCallback
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        expect.stringContaining('✅ *Executing voice command*'),
-        {
-          chat_id: 456,
-          message_id: 123,
-          parse_mode: 'Markdown'
-        }
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        expect.stringContaining('✅ *Executing voice command*')
       );
       expect(voiceHandler.pendingCommands.has(123)).toBe(false);
       expect(mockProcessCallback).toHaveBeenCalledWith('test command', 789, 456);
@@ -430,13 +435,10 @@ describe('VoiceMessageHandler', () => {
         jest.fn()
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        '❌ *Voice command cancelled*',
-        {
-          chat_id: 456,
-          message_id: 123,
-          parse_mode: 'Markdown'
-        }
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        '❌ *Voice command cancelled*'
       );
       expect(voiceHandler.pendingCommands.has(123)).toBe(false);
     });
@@ -450,13 +452,10 @@ describe('VoiceMessageHandler', () => {
         jest.fn()
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        expect.stringContaining('✏️ *Edit voice command*'),
-        {
-          chat_id: 456,
-          message_id: 123,
-          parse_mode: 'Markdown'
-        }
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        expect.stringContaining('✏️ *Edit voice command*')
       );
       // Should NOT remove from pending commands for edit
       expect(voiceHandler.pendingCommands.has(123)).toBe(true);
@@ -474,13 +473,10 @@ describe('VoiceMessageHandler', () => {
         jest.fn()
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        '❌ *Voice command expired*\n\nPlease send a new voice message.',
-        {
-          chat_id: 456,
-          message_id: 123,
-          parse_mode: 'Markdown'
-        }
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        '❌ *Voice command expired*\n\nPlease send a new voice message.'
       );
     });
 
@@ -493,9 +489,10 @@ describe('VoiceMessageHandler', () => {
         jest.fn()
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        expect.stringContaining('"test command"'),
-        expect.any(Object)
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        expect.stringContaining('"test command"')
       );
     });
 
@@ -508,9 +505,10 @@ describe('VoiceMessageHandler', () => {
         jest.fn()
       );
 
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        expect.stringContaining('"test command"'),
-        expect.any(Object)
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        expect.stringContaining('"test command"')
       );
     });
   });
@@ -603,15 +601,16 @@ describe('VoiceMessageHandler', () => {
       );
 
       expect(voiceHandler.pendingCommands.size).toBe(0);
-      expect(mockBot.editMessageText).toHaveBeenCalledWith(
-        '❌ *Voice command cancelled*',
-        expect.any(Object)
+      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
+        456,
+        123,
+        '❌ *Voice command cancelled*'
       );
     });
 
     test('should handle multiple pending commands', async () => {
       // Simulate multiple voice messages
-      mockBot.sendMessage
+      mockMainBot.safeSendMessage
         .mockResolvedValueOnce({ message_id: 123 })
         .mockResolvedValueOnce({ message_id: 124 });
 
@@ -649,7 +648,7 @@ describe('VoiceMessageHandler', () => {
     });
 
     test('should handle callback errors gracefully', async () => {
-      mockBot.editMessageText.mockRejectedValueOnce(new Error('Edit failed'));
+      mockMainBot.safeEditMessage.mockRejectedValueOnce(new Error('Edit failed'));
 
       // This should not throw
       await expect(voiceHandler.handleVoiceCallback(
@@ -747,7 +746,7 @@ describe('VoiceMessageHandler', () => {
     beforeEach(() => {
       // Set test environment
       process.env.NODE_ENV = 'test';
-      testModeHandler = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator);
+      testModeHandler = new VoiceMessageHandler(mockBot, 'test-nexara-key', mockActivityIndicator, mockMainBot);
       jest.clearAllMocks();
     });
 
@@ -766,7 +765,7 @@ describe('VoiceMessageHandler', () => {
       expect(mockAxios.post).not.toHaveBeenCalled();
 
       // Should send test mode message
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         456,
         expect.stringContaining('Test Mode'),
         expect.any(Object)
@@ -779,7 +778,7 @@ describe('VoiceMessageHandler', () => {
     });
 
     test('should use simulated transcription when no API key provided', async () => {
-      const handlerWithoutKey = new VoiceMessageHandler(mockBot, null, mockActivityIndicator);
+      const handlerWithoutKey = new VoiceMessageHandler(mockBot, null, mockActivityIndicator, mockMainBot);
       const voiceMsg = createMockVoiceMessage();
 
       await handlerWithoutKey.handleVoiceMessage(voiceMsg);
@@ -790,7 +789,7 @@ describe('VoiceMessageHandler', () => {
       expect(mockAxios.post).not.toHaveBeenCalled();
 
       // Should send test mode message
-      expect(mockBot.sendMessage).toHaveBeenCalledWith(
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
         456,
         expect.stringContaining('Test Mode'),
         expect.any(Object)

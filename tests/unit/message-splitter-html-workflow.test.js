@@ -55,8 +55,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
     test('should identify potential HTML tag issues after conversion', () => {
       // Convert markdown to HTML using TelegramFormatter
       const formatter = new TelegramFormatter({ mode: 'html' });
-      const formatted = formatter.formatAssistantTextHTML(testData);
-      const htmlContent = formatted.text;
+      const formatted = formatter.formatAssistantText(testData);
+      const htmlContent = formatted;
       
       // Check for potential unclosed tag patterns
       const openTags = (htmlContent.match(/<[^/>]+>/g) || []).length;
@@ -76,8 +76,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
 
     test('should demonstrate the splitting problem with HTML content', () => {
       const formatter = new TelegramFormatter({ mode: 'html' });
-      const formatted = formatter.formatAssistantTextHTML(testData);
-      const htmlContent = formatted.text;
+      const formatted = formatter.formatAssistantText(testData);
+      const htmlContent = formatted;
       
       // Split the HTML content using current splitter
       const splitter = new MessageSplitter({ safeLength: 4000 });
@@ -111,8 +111,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
       
       // Step 2: Convert to HTML using telegram-formatter
       const formatter = new TelegramFormatter({ mode: 'html' });
-      const formatted = formatter.formatAssistantTextHTML(rawOutput);
-      const htmlContent = formatted.text;
+      const formatted = formatter.formatAssistantText(rawOutput);
+      const htmlContent = formatted;
       
       // Step 3: Split the HTML content intelligently
       const splitter = new MessageSplitter({ safeLength: 4000 });
@@ -164,8 +164,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
       for (const pattern of problematicPatterns) {
         if (pattern && pattern.length > 100) { // Skip if pattern not found
           const formatter = new TelegramFormatter({ mode: 'html' });
-          const formatted = formatter.formatAssistantTextHTML(pattern);
-          const htmlContent = formatted.text;
+          const formatted = formatter.formatAssistantText(pattern);
+          const htmlContent = formatted;
           
           const splitter = new MessageSplitter({ safeLength: 2000 });
           await splitter.sendLongMessage(mockBot, 12345, htmlContent, { parse_mode: 'HTML' });
@@ -183,8 +183,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
       
       // Process the full Claude output
       const formatter = new TelegramFormatter({ mode: 'html' });
-      const formatted = formatter.formatAssistantTextHTML(testData);
-      const htmlContent = formatted.text;
+      const formatted = formatter.formatAssistantText(testData);
+      const htmlContent = formatted;
       
       const splitter = new MessageSplitter({ safeLength: 4000 });
       await splitter.sendLongMessage(mockBot, 12345, htmlContent, { parse_mode: 'HTML' });
@@ -207,8 +207,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
     test('should handle HTML conversion failures gracefully', async () => {
       // Mock formatter to throw error
       const formatter = new TelegramFormatter({ mode: 'html' });
-      const originalFormat = formatter.formatAssistantTextHTML;
-      formatter.formatAssistantTextHTML = jest.fn().mockImplementation(() => {
+      const originalFormat = formatter.formatAssistantText;
+      formatter.formatAssistantText = jest.fn().mockImplementation(() => {
         throw new Error('HTML conversion failed');
       });
       
@@ -217,8 +217,8 @@ describe('MessageSplitter HTML Workflow Integration', () => {
       // Should not crash when HTML conversion fails
       await expect(async () => {
         try {
-          const formatted = formatter.formatAssistantTextHTML(testData);
-          await splitter.sendLongMessage(mockBot, 12345, formatted.text);
+          const formatted = formatter.formatAssistantText(testData);
+          await splitter.sendLongMessage(mockBot, 12345, formatted);
         } catch (error) {
           // Fall back to plain text
           await splitter.sendLongMessage(mockBot, 12345, testData);
@@ -226,7 +226,7 @@ describe('MessageSplitter HTML Workflow Integration', () => {
       }).not.toThrow();
       
       // Restore original method
-      formatter.formatAssistantTextHTML = originalFormat;
+      formatter.formatAssistantText = originalFormat;
     });
 
     test('should handle malformed HTML gracefully', async () => {

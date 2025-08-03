@@ -212,6 +212,43 @@ class SessionManager {
   }
 
   /**
+   * Clear session from both memory and config file (for new sessions)
+   */
+  async clearStoredSession(userId) {
+    // Clear in-memory session
+    this.clearCurrentSessionId(userId);
+    
+    // Clear session from config file
+    if (!this.configFilePath) {
+      console.warn('[Session] No config file path provided, cannot clear stored session');
+      return;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      const currentProject = this.options.workingDirectory;
+      
+      // Remove session from project-specific config
+      if (config.projectSessions && config.projectSessions[currentProject]) {
+        const projectSession = config.projectSessions[currentProject];
+        if (projectSession.userId === userId.toString()) {
+          delete config.projectSessions[currentProject];
+          console.log(`[Session] Cleared stored session for project ${currentProject}`);
+        }
+      }
+      
+      // Write back to file
+      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      
+    } catch (error) {
+      console.error('[Session] Error clearing stored session from config:', error.message);
+    }
+  }
+
+  /**
    * Add session to history
    */
   addSessionToHistory(userId, sessionId) {
@@ -510,8 +547,8 @@ class SessionManager {
       this.deleteUserSession(userId);
     }
 
-    // Clear current session ID to force new session
-    this.clearCurrentSessionId(userId);
+    // Clear current session ID from both memory and config file to force new session
+    await this.clearStoredSession(userId);
     
     // Create new session
     const session = await this.createUserSession(userId, chatId);
@@ -553,8 +590,8 @@ class SessionManager {
     this.activeProcessors.delete(session.processor);
     this.deleteUserSession(userId);
     
-    // Clear current session ID
-    this.clearCurrentSessionId(userId);
+    // Clear current session ID from both memory and config file
+    await this.clearStoredSession(userId);
 
     const messageCount = session.messageCount;
     const uptime = Math.round((Date.now() - session.createdAt.getTime()) / 1000);
@@ -1004,6 +1041,16 @@ class SessionManager {
           {}
         );
       }
+    }
+  }
+
+  // Safe Send Message Wrapper
+  async safeSendMessage(chatId, text, options = {}) {
+    try {
+      return await this.mainBot.safeSendMessage(chatId, text, options);
+    } catch (error) {
+      console.error('Failed to send message:', error.message);
+      throw error;
     }
   }
 

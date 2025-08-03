@@ -69,11 +69,12 @@ class ClaudeStreamProcessor extends EventEmitter {
    */
   async startNewConversation(prompt) {
     const args = [
-      '-p', prompt,
+      '-p',
       '--model', this.options.model,
       '--output-format', 'stream-json',
       '--verbose',
-      '--dangerously-skip-permissions'
+      '--dangerously-skip-permissions',
+      prompt  // Prompt as positional argument at the end
     ];
     
     return this._spawnClaudeProcess(args);
@@ -91,11 +92,12 @@ class ClaudeStreamProcessor extends EventEmitter {
     // Fallback to -c flag (continues last session in working directory)
     const args = [
       '-c', // 🔑 Continue flag - maintains session history
-      '-p', prompt,
+      '-p',
       '--model', this.options.model,
       '--output-format', 'stream-json',
       '--verbose',
-      '--dangerously-skip-permissions'
+      '--dangerously-skip-permissions',
+      prompt  // Prompt as positional argument at the end
     ];
     
     return this._spawnClaudeProcess(args);
@@ -107,11 +109,12 @@ class ClaudeStreamProcessor extends EventEmitter {
   async resumeSession(sessionId, prompt) {
     const args = [
       '-r', sessionId,  // Use -r flag instead of --resume
-      '-p', prompt,
+      '-p',
       '--model', this.options.model,
       '--output-format', 'stream-json',
       '--verbose',
-      '--dangerously-skip-permissions'
+      '--dangerously-skip-permissions',
+      prompt  // Prompt as positional argument at the end
     ];
     
     console.log(`[ClaudeStream] Resuming session: ${sessionId}`);

@@ -17,9 +17,9 @@ describe('TelegramFormatter', () => {
       expect(formatter.mode).toBe('html');
     });
 
-    test('should accept mode option', () => {
+    test('should always use HTML mode regardless of option', () => {
       const mdFormatter = new TelegramFormatter({ mode: 'markdown' });
-      expect(mdFormatter.mode).toBe('markdown');
+      expect(mdFormatter.mode).toBe('html');
     });
 
     test('should have status icons configured', () => {
@@ -65,96 +65,33 @@ describe('TelegramFormatter', () => {
     });
   });
 
-  describe('Text Formatting - HTML Mode', () => {
-    beforeEach(() => {
-      formatter = new TelegramFormatter({ mode: 'html' });
+  describe('Text Formatting', () => {
+    test('should return plain text for assistant messages', () => {
+      const result = formatter.formatAssistantText('This is **bold** text');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('This is **bold** text');
     });
 
-    test('should format headers with icons in HTML', () => {
-      const result = formatter.formatAssistantTextHTML('# Main Header\n## Sub Header');
-      expect(result.text).toContain('<b>📋 Main Header</b>');
-      expect(result.text).toContain('<b>🔸 Sub Header</b>');
-      expect(result.parse_mode).toBe('HTML');
-    });
-
-    test('should format bold text in HTML', () => {
-      const result = formatter.formatAssistantTextHTML('This is **bold** text');
-      expect(result.text).toContain('This is <b>bold</b> text');
-    });
-
-    test('should format italic text in HTML', () => {
-      const result = formatter.formatAssistantTextHTML('This is *italic* text');
-      expect(result.text).toContain('This is <i>italic</i> text');
-    });
-
-    test('should format inline code in HTML', () => {
-      const result = formatter.formatAssistantTextHTML('Use `console.log()` for debugging');
-      expect(result.text).toContain('Use <code>console.log()</code> for debugging');
-    });
-
-    test('should convert markdown links to HTML links', () => {
-      const result = formatter.formatAssistantTextHTML('[GitHub](https://github.com)');
-      expect(result.text).toContain('<a href="https://github.com">GitHub</a>');
-    });
-
-    test('should convert numbered lists to bullet points', () => {
-      const result = formatter.formatAssistantTextHTML('1. First item\n2. Second item');
-      expect(result.text).toContain('• First item');
-      expect(result.text).toContain('• Second item');
-    });
-
-    test('should escape HTML in content before formatting', () => {
-      const result = formatter.formatAssistantTextHTML('Use <script> **tags** carefully');
-      expect(result.text).toContain('Use &lt;script&gt; <b>tags</b> carefully');
+    test('should return plain text for various content', () => {
+      const result = formatter.formatAssistantText('# Header\n**Bold** and *italic*');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('# Header\n**Bold** and *italic*');
     });
   });
 
-  describe('Text Formatting - Markdown Mode', () => {
-    beforeEach(() => {
-      formatter = new TelegramFormatter({ mode: 'markdown' });
-    });
-
-    test('should format headers with icons in Markdown', () => {
-      const result = formatter.formatAssistantTextMarkdown('# Main Header\n## Sub Header');
-      expect(result.text).toContain('*📋 Main Header*');
-      expect(result.text).toContain('*🔸 Sub Header*');
-    });
-
-    test('should convert double asterisks to single asterisks', () => {
-      const result = formatter.formatAssistantTextMarkdown('This is **bold** text');
-      expect(result.text).toContain('This is *bold* text');
-    });
-
-    test('should preserve inline code formatting', () => {
-      const result = formatter.formatAssistantTextMarkdown('Use `console.log()` function');
-      expect(result.text).toContain('Use `console.log()` function');
-    });
-
-    test('should convert markdown links to plain text format', () => {
-      const result = formatter.formatAssistantTextMarkdown('[GitHub](https://github.com)');
-      expect(result.text).toContain('GitHub (https://github.com)');
-    });
-  });
 
   describe('Thinking Message Formatting', () => {
-    test('should format thinking message in HTML mode', () => {
-      const result = formatter.formatThinkingHTML('User wants help with code', 'signature');
-      expect(result.text).toContain('🤔 <b>Claude is thinking...</b>');
-      expect(result.text).toContain('<pre>User wants help with code</pre>');
-      expect(result.parse_mode).toBe('HTML');
-      expect(result.type).toBe('thinking');
+    test('should format thinking message', () => {
+      const result = formatter.formatThinking('User wants help with code', 'signature');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('🤔 **Claude is thinking...**');
+      expect(result).toContain('```\nUser wants help with code\n```');
     });
 
-    test('should format thinking message in Markdown mode', () => {
-      const result = formatter.formatThinkingMarkdown('User wants help with code', 'signature');
-      expect(result.text).toContain('🤔 *Claude is thinking...*');
-      expect(result.text).toContain('```\nUser wants help with code\n```');
-      expect(result.type).toBe('thinking');
-    });
-
-    test('should escape HTML in thinking content', () => {
-      const result = formatter.formatThinkingHTML('Need to handle <script> tags', 'signature');
-      expect(result.text).toContain('Need to handle &lt;script&gt; tags');
+    test('should handle special characters in thinking content', () => {
+      const result = formatter.formatThinking('Need to handle <script> tags', 'signature');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('Need to handle <script> tags');
     });
   });
 
@@ -165,32 +102,31 @@ describe('TelegramFormatter', () => {
       { id: '3', content: 'Fix bug in formatter', status: 'completed', priority: 'low' }
     ];
 
-    test('should format todo list with progress overview in HTML', () => {
-      const result = formatter.formatTodoWriteHTML(sampleTodos);
-      expect(result.text).toContain('📋 <b>Todo List</b>');
-      expect(result.text).toContain('📊 <b>Progress</b>: 1/3 (33%)');
-      expect(result.text).toContain('✅ 1 | 🔄 1 | ⭕ 1');
-      expect(result.type).toBe('todo');
-      expect(result.canEdit).toBe(true);
+    test('should format todo list with progress overview', () => {
+      const result = formatter.formatTodoWrite(sampleTodos);
+      expect(typeof result).toBe('string');
+      expect(result).toContain('📋 **Todo List**');
+      expect(result).toContain('📊 **Progress**: 1/3 (33%)');
+      expect(result).toContain('✅ 1 | 🔄 1 | ⭕ 1');
     });
 
     test('should group todos by status', () => {
-      const result = formatter.formatTodoWriteHTML(sampleTodos);
-      expect(result.text).toContain('<b>🔄 In Progress</b> (1)');
-      expect(result.text).toContain('<b>⭕ Pending</b> (1)');
-      expect(result.text).toContain('<b>✅ Completed</b> (1)');
+      const result = formatter.formatTodoWrite(sampleTodos);
+      expect(result).toContain('**🔄 In Progress** (1)');
+      expect(result).toContain('**⭕ Pending** (1)');
+      expect(result).toContain('**✅ Completed** (1)');
     });
 
     test('should show priority badges for todos', () => {
-      const result = formatter.formatTodoWriteHTML(sampleTodos);
-      expect(result.text).toContain('🔴'); // high priority
-      expect(result.text).toContain('🟡'); // medium priority
-      expect(result.text).toContain('🟢'); // low priority
+      const result = formatter.formatTodoWrite(sampleTodos);
+      expect(result).toContain('🔴'); // high priority
+      expect(result).toContain('🟡'); // medium priority
+      expect(result).toContain('🟢'); // low priority
     });
 
-    test('should strikethrough completed todos in HTML', () => {
-      const result = formatter.formatTodoWriteHTML(sampleTodos);
-      expect(result.text).toContain('<s>Fix bug in formatter</s>');
+    test('should strikethrough completed todos', () => {
+      const result = formatter.formatTodoWrite(sampleTodos);
+      expect(result).toContain('~~Fix bug in formatter~~');
     });
 
     test('should handle todos with blocked status', () => {
@@ -198,18 +134,18 @@ describe('TelegramFormatter', () => {
         ...sampleTodos,
         { id: '4', content: 'Deploy to production', status: 'blocked', priority: 'critical' }
       ];
-      const result = formatter.formatTodoWriteHTML(todosWithBlocked);
-      expect(result.text).toContain('🚧 1');
-      expect(result.text).toContain('<b>🚧 Blocked</b> (1)');
-      expect(result.text).toContain('🚨'); // critical priority
+      const result = formatter.formatTodoWrite(todosWithBlocked);
+      expect(result).toContain('🚧 1');
+      expect(result).toContain('**🚧 Blocked** (1)');
+      expect(result).toContain('🚨'); // critical priority
     });
 
-    test('should escape HTML in todo content', () => {
-      const todosWithHtml = [
+    test('should handle special characters in todo content', () => {
+      const todosWithSpecial = [
         { id: '1', content: 'Fix <script> injection', status: 'pending', priority: 'high' }
       ];
-      const result = formatter.formatTodoWriteHTML(todosWithHtml);
-      expect(result.text).toContain('Fix &lt;script&gt; injection');
+      const result = formatter.formatTodoWrite(todosWithSpecial);
+      expect(result).toContain('Fix <script> injection');
     });
   });
 
@@ -221,12 +157,12 @@ describe('TelegramFormatter', () => {
         'new code here',
         { isError: false }
       );
-      expect(result.text).toContain('✏️ *File Edit*');
-      expect(result.text).toContain('📄 `/path/to/file.js`');
-      expect(result.text).toContain('*Before:*');
-      expect(result.text).toContain('*After:*');
-      expect(result.text).toContain('✅ *Result:* Success');
-      expect(result.type).toBe('file_edit');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('✏️ **File Edit**');
+      expect(result).toContain('📄 `/path/to/file.js`');
+      expect(result).toContain('**Before:**');
+      expect(result).toContain('**After:**');
+      expect(result).toContain('✅ **Result:** Success');
     });
 
     test('should format file write operation', () => {
@@ -235,11 +171,11 @@ describe('TelegramFormatter', () => {
         'const example = "hello";',
         { isError: false }
       );
-      expect(result.text).toContain('📝 *File Write*');
-      expect(result.text).toContain('📄 `/path/to/new-file.js`');
-      expect(result.text).toContain('*Content:*');
-      expect(result.text).toContain('const example = "hello";');
-      expect(result.type).toBe('file_write');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('📝 **File Write**');
+      expect(result).toContain('📄 `/path/to/new-file.js`');
+      expect(result).toContain('**Content:**');
+      expect(result).toContain('const example = "hello";');
     });
 
     test('should format file read operation', () => {
@@ -247,11 +183,11 @@ describe('TelegramFormatter', () => {
         '/path/to/existing-file.js',
         { isError: false, content: 'file content here' }
       );
-      expect(result.text).toContain('👀 *File Read*');
-      expect(result.text).toContain('📄 `/path/to/existing-file.js`');
-      expect(result.text).toContain('*Content:*');
-      expect(result.text).toContain('file content here');
-      expect(result.type).toBe('file_read');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('👀 **File Read**');
+      expect(result).toContain('📄 `/path/to/existing-file.js`');
+      expect(result).toContain('**Content:**');
+      expect(result).toContain('file content here');
     });
 
     test('should handle file operation errors', () => {
@@ -261,14 +197,14 @@ describe('TelegramFormatter', () => {
         'new',
         { isError: true }
       );
-      expect(result.text).toContain('❌ *Result:* Failed');
+      expect(result).toContain('❌ **Result:** Failed');
     });
 
     test('should truncate long content previews', () => {
       const longContent = 'a'.repeat(300);
       const result = formatter.formatFileWrite('/file.js', longContent);
-      expect(result.text).toContain('...');
-      expect(result.text.length).toBeLessThan(longContent.length + 100);
+      expect(result).toContain('...');
+      expect(result.length).toBeLessThan(longContent.length + 100);
     });
   });
 
@@ -279,18 +215,18 @@ describe('TelegramFormatter', () => {
         'List files in directory',
         { isError: false, content: 'file1.js\nfile2.js' }
       );
-      expect(result.text).toContain('💻 *Terminal Command*');
-      expect(result.text).toContain('📝 *Description:* List files in directory');
-      expect(result.text).toContain('💻 `ls -la`');
-      expect(result.text).toContain('✅ *Result:* Success');
-      expect(result.text).toContain('*Output:*');
-      expect(result.type).toBe('bash_command');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('💻 **Terminal Command**');
+      expect(result).toContain('📝 **Description:** List files in directory');
+      expect(result).toContain('💻 `ls -la`');
+      expect(result).toContain('✅ **Result:** Success');
+      expect(result).toContain('**Output:**');
     });
 
     test('should format complex bash command with code block', () => {
       const complexCommand = 'for file in *.js; do\n  echo "Processing $file"\ndone';
       const result = formatter.formatBashCommand(complexCommand, 'Process all JS files');
-      expect(result.text).toContain('```bash\n' + complexCommand + '\n```');
+      expect(result).toContain('```\n' + complexCommand + '\n```');
     });
 
     test('should handle bash command errors', () => {
@@ -299,7 +235,7 @@ describe('TelegramFormatter', () => {
         'This will fail',
         { isError: true }
       );
-      expect(result.text).toContain('❌ *Result:* Failed');
+      expect(result).toContain('❌ **Result:** Failed');
     });
 
     test('should truncate long command output', () => {
@@ -309,7 +245,7 @@ describe('TelegramFormatter', () => {
         'List files',
         { isError: false, content: longOutput }
       );
-      expect(result.text).toContain('...');
+      expect(result).toContain('...');
     });
   });
 
@@ -321,11 +257,11 @@ describe('TelegramFormatter', () => {
         'code-reviewer',
         { isError: false }
       );
-      expect(result.text).toContain('🤖 *Task Agent*');
-      expect(result.text).toContain('🤖 *Type:* code-reviewer');
-      expect(result.text).toContain('📋 *Description:* Analyze code quality');
-      expect(result.text).toContain('✅ *Status:* Running');
-      expect(result.type).toBe('task_spawn');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('🤖 **Task Agent**');
+      expect(result).toContain('🤖 **Type:** code-reviewer');
+      expect(result).toContain('📋 **Description:** Analyze code quality');
+      expect(result).toContain('✅ **Status:** Running');
     });
 
     test('should format MCP tool operation', () => {
@@ -334,13 +270,13 @@ describe('TelegramFormatter', () => {
         { project_id: '123', title: 'New task' },
         { isError: false, content: 'Task created successfully' }
       );
-      expect(result.text).toContain('🔌 *MCP Tool*');
-      expect(result.text).toContain('🔌 *Tool:* `vibe_kanban__create_task`');
-      expect(result.text).toContain('*Parameters:*');
-      expect(result.text).toContain('• *project_id:* `123`');
-      expect(result.text).toContain('• *title:* `New task`');
-      expect(result.text).toContain('✅ *Result:* Success');
-      expect(result.type).toBe('mcp_tool');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('🔌 **MCP Tool**');
+      expect(result).toContain('🔌 **Tool:** `vibe_kanban__create_task`');
+      expect(result).toContain('**Parameters:**');
+      expect(result).toContain('• **project_id:** `123`');
+      expect(result).toContain('• **title:** `New task`');
+      expect(result).toContain('✅ **Result:** Success');
     });
   });
 
@@ -354,13 +290,13 @@ describe('TelegramFormatter', () => {
         permissionMode: 'ask'
       };
       const result = formatter.formatSessionInit(sessionData);
-      expect(result.text).toContain('🚀 *Session Started*');
-      expect(result.text).toContain('🆔 *Session:* `23def456`'); // last 8 chars
-      expect(result.text).toContain('🤖 *Model:* claude-3');
-      expect(result.text).toContain('📁 *Directory:* `/home/user/project`');
-      expect(result.text).toContain('🔒 *Permissions:* ask');
-      expect(result.text).toContain('🛠 *Tools:* 3 available');
-      expect(result.type).toBe('session_init');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('🚀 **Session Started**');
+      expect(result).toContain('🆔 **Session:** `23def456`'); // last 8 chars
+      expect(result).toContain('🤖 **Model:** claude-3');
+      expect(result).toContain('📁 **Directory:** `/home/user/project`');
+      expect(result).toContain('🔒 **Permissions:** ask');
+      expect(result).toContain('🛠 **Tools:** 3 available');
     });
 
     test('should format execution result', () => {
@@ -373,19 +309,19 @@ describe('TelegramFormatter', () => {
         },
         'session123'
       );
-      expect(result.text).toContain('✅ *Session* `ssion123` *ended*');
-      expect(result.text).toContain('⏱ *Duration:* 5.50s');
-      expect(result.text).toContain('💰 *Cost:* $0.0025');
-      expect(result.text).toContain('🎯 *Tokens:* 150 (100 in, 50 out)');
-      expect(result.type).toBe('execution_result');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('✅ **Session** `ssion123` **ended**');
+      expect(result).toContain('⏱ **Duration:** 5.50s');
+      expect(result).toContain('💰 **Cost:** $0.0025');
+      expect(result).toContain('🎯 **Tokens:** 150 (100 in, 50 out)');
     });
 
     test('should format error messages', () => {
       const error = new Error('Something went wrong');
       const result = formatter.formatError(error, 'file operation');
-      expect(result.text).toContain('❌ *Error* in file operation');
-      expect(result.text).toContain('Something went wrong');
-      expect(result.type).toBe('error');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('❌ **Error** in file operation');
+      expect(result).toContain('Something went wrong');
     });
   });
 
@@ -453,31 +389,33 @@ describe('TelegramFormatter', () => {
   });
 
   describe('Mode Selection', () => {
-    test('should use HTML formatting when in HTML mode', () => {
+    test('should return plain text regardless of mode', () => {
       const htmlFormatter = new TelegramFormatter({ mode: 'html' });
       const result = htmlFormatter.formatAssistantText('**bold** text');
-      expect(result.text).toContain('<b>bold</b>');
-      expect(result.parse_mode).toBe('HTML');
+      expect(typeof result).toBe('string');
+      expect(result).toBe('**bold** text');
     });
 
-    test('should use Markdown formatting when in markdown mode', () => {
+    test('should return plain text for markdown mode too', () => {
       const mdFormatter = new TelegramFormatter({ mode: 'markdown' });
       const result = mdFormatter.formatAssistantText('**bold** text');
-      expect(result.text).toContain('*bold*');
-      expect(result.parse_mode).toBeUndefined();
+      expect(typeof result).toBe('string');
+      expect(result).toBe('**bold** text');
     });
 
-    test('should use HTML formatting for thinking based on mode', () => {
+    test('should return plain text for thinking', () => {
       const htmlFormatter = new TelegramFormatter({ mode: 'html' });
       const result = htmlFormatter.formatThinking('thinking content');
-      expect(result.text).toContain('<pre>');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('```\nthinking content\n```');
     });
 
-    test('should use HTML formatting for todos based on mode', () => {
+    test('should return plain text for todos', () => {
       const htmlFormatter = new TelegramFormatter({ mode: 'html' });
       const todos = [{ id: '1', content: 'Test', status: 'pending', priority: 'low' }];
       const result = htmlFormatter.formatTodoWrite(todos);
-      expect(result.parse_mode).toBe('HTML');
+      expect(typeof result).toBe('string');
+      expect(result).toContain('📋 **Todo List**');
     });
   });
 });
