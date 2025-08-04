@@ -49,6 +49,7 @@ const createMockMainBot = () => ({
   safeEditMessage: jest.fn().mockResolvedValue(true),
   getUserIdFromChat: jest.fn().mockReturnValue('user123'),
   sendSessionInit: jest.fn().mockResolvedValue(),
+  storeUserThinkingMode: jest.fn(),
   keyboardHandlers: {
     getReplyKeyboardMarkup: jest.fn().mockReturnValue({})
   }

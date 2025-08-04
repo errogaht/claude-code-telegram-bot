@@ -57,6 +57,10 @@ class SessionManager {
       if (!sessionTitle) {
         sessionTitle = await this.getSessionSummary(storedSessionId);
       }
+      
+      // For resumed sessions, thinking mode is already in memory (userPreferences)
+      // No need to restore from config - each bot process maintains its own thinking mode state
+      console.log(`[User ${userId}] Resumed session with current thinking mode: ${this.getUserThinkingMode(userId)}`);
     }
 
     const session = {
@@ -780,6 +784,11 @@ class SessionManager {
 
     // Clear current session ID from both memory and config file to force new session
     await this.clearStoredSession(userId);
+    
+    // IMPORTANT: Reset thinking mode to 'auto' for new sessions
+    // This ensures fresh sessions start with default thinking mode
+    console.log(`[User ${userId}] Resetting thinking mode to 'auto' for new session`);
+    this.mainBot.storeUserThinkingMode(userId, 'auto');
     
     // Create new session
     const session = await this.createUserSession(userId, chatId);
