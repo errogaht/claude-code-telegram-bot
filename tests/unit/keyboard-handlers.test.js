@@ -78,6 +78,7 @@ describe('KeyboardHandlers', () => {
             { text: '📁 Git' }
           ],
           [
+            { text: '⚙️ Settings' },
             { text: '🔗 Concat On' },
             { text: '🔄 Restart Bot' }
           ]
@@ -99,8 +100,8 @@ describe('KeyboardHandlers', () => {
           expect(typeof button.text).toBe('string');
         });
       });
-      // Last row (concat buttons) should have 2 buttons
-      expect(keyboard.keyboard[3]).toHaveLength(2);
+      // Last row should have 3 buttons (Settings, Concat, Restart)
+      expect(keyboard.keyboard[3]).toHaveLength(3);
     });
   });
 
