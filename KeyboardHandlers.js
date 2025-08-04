@@ -17,7 +17,10 @@ class KeyboardHandlers {
     let concatButton = { text: '🔗 Concat On' };
     
     if (userId && this.mainBot.getConcatModeStatus && this.mainBot.getConcatModeStatus(userId)) {
-      concatButton = { text: '📤 Concat Send' };
+      const bufferCount = this.mainBot.messageBuffer.get(userId)?.length || 0;
+      concatButton = bufferCount > 0 
+        ? { text: `📤 Concat Send (${bufferCount})` }
+        : { text: '📤 Concat Send' };
     }
 
     return {
@@ -57,10 +60,14 @@ class KeyboardHandlers {
     const userId = msg.from.id;
     const username = msg.from.username || 'Unknown';
     
-    console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
+    // Helper function to log keyboard button press
+    const logKeyboardButton = () => {
+      console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
+    };
     
     switch (text) {
     case '🛑 STOP':
+      console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
       console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
       await this.mainBot.sessionManager.cancelUserSession(chatId);
       await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
@@ -70,6 +77,7 @@ class KeyboardHandlers {
       return true;
         
     case '📊 Status':
+      logKeyboardButton();
       console.log(`[COMPONENT] SessionManager.showSessionStatus - chatId: ${chatId}`);
       await this.mainBot.sessionManager.showSessionStatus(chatId);
       return true;
@@ -148,6 +156,7 @@ class KeyboardHandlers {
     default:
       // Check if it's a "Concat Send" button with count
       if (text.startsWith('📤 Concat Send')) {
+        console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
         console.log(`[COMPONENT] StreamTelegramBot.sendConcatenatedMessage - userId: ${userId}, chatId: ${chatId}`);
         await this.mainBot.sendConcatenatedMessage(userId, chatId);
         return true;

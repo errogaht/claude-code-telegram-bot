@@ -129,6 +129,11 @@ class StreamTelegramBot {
     // Handle text messages
     this.bot.on('message', async (msg) => {
       try {
+        // Ignore messages from bots (including self)
+        if (msg.from.is_bot) {
+          return;
+        }
+        
         const userId = msg.from.id;
         const username = msg.from.username || 'Unknown';
         const chatId = msg.chat.id;
@@ -163,6 +168,11 @@ class StreamTelegramBot {
     // Handle voice messages (if Nexara API is configured)
     this.bot.on('voice', async (msg) => {
       try {
+        // Ignore messages from bots (including self)
+        if (msg.from.is_bot) {
+          return;
+        }
+        
         await this.voiceHandler.handleVoiceMessage(msg);
       } catch (error) {
         console.error('Error handling voice:', error);
@@ -173,6 +183,11 @@ class StreamTelegramBot {
     // Handle photo messages with captions
     this.bot.on('photo', async (msg) => {
       try {
+        // Ignore messages from bots (including self)
+        if (msg.from.is_bot) {
+          return;
+        }
+        
         const userId = msg.from.id;
         const username = msg.from.username || 'Unknown';
         const chatId = msg.chat.id;
@@ -193,6 +208,11 @@ class StreamTelegramBot {
 
     // Commands
     this.bot.onText(/\/start/, async (msg) => {
+      // Ignore messages from bots (including self)
+      if (msg.from.is_bot) {
+        return;
+      }
+      
       const userId = msg.from.id;
       const username = msg.from.username || 'Unknown';
       const chatId = msg.chat.id;
@@ -1301,19 +1321,8 @@ class StreamTelegramBot {
       return true;
     }
     
-    // Unauthorized user
-    console.log(`[Security] Blocked unauthorized user ${userId}`);
-    
-    // Send unauthorized message asynchronously
-    setImmediate(() => {
-      this.safeSendMessage(chatId, 
-        '🚫 *Access Denied*\n\n' +
-        'This bot is private and only available to authorized users.\n\n' +
-        '👤 Your User ID: `' + userId + '`'
-      ).catch(error => {
-        console.error('Error sending unauthorized message:', error);
-      });
-    });
+    // Unauthorized user - silently block (no response)
+    console.log(`[Security] Silently blocked unauthorized user ${userId}`);
     
     return false;
   }
