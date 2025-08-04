@@ -105,6 +105,19 @@ npm test -- --coverage                            # With coverage
 
 **Test structure:** `tests/unit/`, `tests/integration/`, `tests/real-bot/`, `tests/helpers/`, `tests/fixtures/`
 
+### 📱 Telegram Message Formatting
+**Complete formatting documentation**: See `telegram-formatting.md` for comprehensive guide covering all Telegram Bot API formatting options (HTML, MarkdownV2, Markdown Legacy)
+
+**Architecture principle:**
+- **ALL project components MUST generate standard Markdown** (not HTML)
+- All Telegram messages flow through `MarkdownHtmlConverter` for HTML conversion
+- Never output HTML directly - always use Markdown (`~~text~~`, `**bold**`, `*italic*`)
+
+**Critical for message formatting changes:**
+- Bot uses HTML parse mode (`parse_mode: 'HTML'`) by default
+- Always escape HTML special characters: `&`, `<`, `>`
+- Refer to full documentation before making formatting changes
+
 ### 🔄 GitManager System (Comprehensive Git Workflow)
 
 **Main Implementation**: `GitManager.js` - Full git workflow management through Telegram interface

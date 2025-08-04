@@ -6,22 +6,32 @@ class MarkdownHtmlConverter {
   convert(text) {
     if (!text || typeof text !== 'string') return '';
     
-    // Store code blocks to protect from markdown processing
+    // Store code blocks and blockquotes to protect from HTML escaping
     const codeBlocks = [];
+    const blockQuotes = [];
     let codeBlockIndex = 0;
+    let blockQuoteIndex = 0;
     
     // 1. Extract and protect code blocks first
     let formatted = text.replace(/```(?:[a-zA-Z]*\n)?([\s\S]*?)```/g, (match, code) => {
-      const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
+      const placeholder = `!!!CODE_BLOCK_${codeBlockIndex}!!!`;
       codeBlocks[codeBlockIndex] = `<pre>${this.escapeHTML(code.trim())}</pre>`;
       codeBlockIndex++;
       return placeholder;
     });
     
-    // 2. Escape HTML characters (prevent XSS)
+    // 2. Convert and protect blockquotes BEFORE escaping HTML
+    formatted = formatted.replace(/^> (.+)$/gm, (match, content) => {
+      const placeholder = `!!!BLOCKQUOTE_${blockQuoteIndex}!!!`;
+      blockQuotes[blockQuoteIndex] = `<blockquote>${content}</blockquote>`;
+      blockQuoteIndex++;
+      return placeholder;
+    });
+    
+    // 3. Escape HTML characters (prevent XSS)
     formatted = this.escapeHTML(formatted);
     
-    // 3. Convert markdown (reuse proven telegram-formatter logic) 
+    // 4. Convert markdown (reuse proven telegram-formatter logic) 
     formatted = formatted
       .replace(/^# (.*$)/gim, '<b>📋 $1</b>')
       .replace(/^## (.*$)/gim, '<b>🔸 $1</b>')
@@ -29,14 +39,19 @@ class MarkdownHtmlConverter {
       .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
       .replace(/\*([^*\s][^*]*[^*\s])\*/g, '<i>$1</i>')
       .replace(/\*([^*\s])\*/g, '<i>$1</i>')
+      .replace(/~~(.*?)~~/g, '<s>$1</s>')
       .replace(/`([^`]+)`/g, '<code>$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
       .replace(/^\d+\.\s+/gm, '• ')
       .replace(/\n{4,}/g, '\n\n\n');
     
-    // 4. Restore protected code blocks
+    // 5. Restore protected elements
     codeBlocks.forEach((codeBlock, index) => {
-      formatted = formatted.replace(`__CODE_BLOCK_${index}__`, codeBlock);
+      formatted = formatted.replace(`!!!CODE_BLOCK_${index}!!!`, codeBlock);
+    });
+    
+    blockQuotes.forEach((blockQuote, index) => {
+      formatted = formatted.replace(`!!!BLOCKQUOTE_${index}!!!`, blockQuote);
     });
     
     return formatted;
