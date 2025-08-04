@@ -60,14 +60,14 @@ class KeyboardHandlers {
     const userId = msg.from.id;
     const username = msg.from.username || 'Unknown';
     
-    // Helper function to log keyboard button press
+    // Helper function to log keyboard button press - only called when actually matched
     const logKeyboardButton = () => {
       console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
     };
     
     switch (text) {
     case '🛑 STOP':
-      console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
+      logKeyboardButton();
       console.log(`[COMPONENT] SessionManager.cancelUserSession - chatId: ${chatId}`);
       await this.mainBot.sessionManager.cancelUserSession(chatId);
       await this.mainBot.safeSendMessage(chatId, '🛑 **Emergency Stop**\n\nAll processes stopped.', {
@@ -83,11 +83,13 @@ class KeyboardHandlers {
       return true;
         
     case '📂 Projects':
+      logKeyboardButton();
       console.log(`[COMPONENT] ProjectNavigator.showProjectSelection - chatId: ${chatId}`);
       await this.mainBot.projectNavigator.showProjectSelection(chatId);
       return true;
         
     case '🔄 New Session':
+      logKeyboardButton();
       console.log(`[COMPONENT] SessionManager.startNewSession - chatId: ${chatId}`);
       await this.mainBot.sessionManager.startNewSession(chatId);
       await this.mainBot.safeSendMessage(chatId, '🔄 **New Session**\n\nOld session ended, new session started.', {
@@ -97,11 +99,13 @@ class KeyboardHandlers {
       return true;
         
     case '📝 Sessions':
+      logKeyboardButton();
       console.log(`[COMPONENT] SessionManager.showSessionHistory - chatId: ${chatId}`);
       await this.mainBot.sessionManager.showSessionHistory(chatId);
       return true;
         
     case '📍 Path': {
+      logKeyboardButton();
       console.log(`[COMPONENT] SessionManager.getCurrentDirectory - userId: ${userId}`);
       const currentDir = this.mainBot.sessionManager.getCurrentDirectory(msg.from.id);
       await this.mainBot.safeSendMessage(chatId, `📍 **Current Path:**\n\n\`${currentDir}\``, {
@@ -111,6 +115,7 @@ class KeyboardHandlers {
     }
         
     case '🤖 Model':
+      logKeyboardButton();
       console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
       await this.mainBot.showModelSelection(chatId);
       return true;
@@ -121,11 +126,13 @@ class KeyboardHandlers {
       return true;
         
     case '📁 Git':
+      logKeyboardButton();
       console.log(`[COMPONENT] GitManager.showGitOverview - chatId: ${chatId}`);
       await this.mainBot.gitManager.showGitOverview(chatId);
       return true;
         
     case '🔄 Restart Bot':
+      logKeyboardButton();
       console.log(`[COMPONENT] StreamTelegramBot.restartBot - userId: ${userId}, chatId: ${chatId}`);
       // Check if user is admin
       if (!this.mainBot.authorizedUsers.has(userId)) {
@@ -144,11 +151,13 @@ class KeyboardHandlers {
       return true;
 
     case '🔗 Concat On':
+      logKeyboardButton();
       console.log(`[COMPONENT] StreamTelegramBot.enableConcatMode - userId: ${userId}, chatId: ${chatId}`);
       await this.mainBot.enableConcatMode(userId, chatId);
       return true;
         
     case '⚙️ Settings':
+      logKeyboardButton();
       console.log(`[COMPONENT] SettingsMenuHandler.showSettingsMenu - chatId: ${chatId}`);
       await this.mainBot.settingsHandler.showSettingsMenu(chatId);
       return true;
@@ -156,7 +165,7 @@ class KeyboardHandlers {
     default:
       // Check if it's a "Concat Send" button with count
       if (text.startsWith('📤 Concat Send')) {
-        console.log(`[KEYBOARD_BUTTON] User ${userId} (@${username}) pressed keyboard button: "${text}" in chat ${chatId}`);
+        logKeyboardButton();
         console.log(`[COMPONENT] StreamTelegramBot.sendConcatenatedMessage - userId: ${userId}, chatId: ${chatId}`);
         await this.mainBot.sendConcatenatedMessage(userId, chatId);
         return true;

@@ -498,8 +498,24 @@ class StreamTelegramBot {
       return;
     }
 
+    // Build the final message text with reply context if present
+    let finalText = text;
+    
+    // Check if this is a reply to another message
+    if (msg.reply_to_message) {
+      const repliedText = msg.reply_to_message.text || '[non-text message]';
+      
+      // Check if this is a quote reply (partial text selected)
+      if (msg.quote && msg.quote.text) {
+        finalText = `User replied to the following quoted text:\n[QUOTED_TEXT]\n${msg.quote.text}\n[/QUOTED_TEXT]\n\nUser's reply: ${text}`;
+      } else {
+        // Regular reply to full message
+        finalText = `User replied to the following message:\n[REPLIED_MESSAGE]\n${repliedText}\n[/REPLIED_MESSAGE]\n\nUser's reply: ${text}`;
+      }
+    }
+
     // Normal processing if concat mode is off
-    await this.processUserMessage(text, userId, chatId);
+    await this.processUserMessage(finalText, userId, chatId);
   }
 
 
@@ -934,7 +950,7 @@ class StreamTelegramBot {
       console.error(`[SafeSendMessage] ${parsedError.type} Error:`, parsedError.message);
       
       // Enhanced error logging with full message content for HTML parsing errors
-      if (parsedError.message.includes('Invalid HTML tag') || parsedError.message.includes('position')) {
+      if (parsedError.message && (parsedError.message.includes('Invalid HTML tag') || parsedError.message.includes('position'))) {
         console.error(`[SafeSendMessage] Original text that caused the error (length: ${text.length}):`);
         console.error('[SafeSendMessage] ===== ORIGINAL TEXT START =====');
         console.error(text);
