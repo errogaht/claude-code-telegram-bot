@@ -24,6 +24,7 @@
     "test:real-bot:configs": "jest tests/real-bot/multi-config.test.js --detectOpenHandles",
     "test:real-bot:suite": "jest tests/real-bot/real-bot-test-suite.test.js --detectOpenHandles",
     "test:failures": "jest --verbose=false --silent",
+    "test:failures-report": "./scripts/test-failures-report.sh",
     "test:watch-failures": "jest --watch --verbose=false",
     "test:ci": "jest --ci --coverage --watchAll=false",
     "lint": "npx eslint .",
