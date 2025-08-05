@@ -2036,8 +2036,8 @@ class SessionManager {
               reply_markup: {
                 inline_keyboard: [[
                   {
-                    text: '✅ Продолжить сессию',
-                    callback_data: `continue_after_compact:${sessionId}:${targetChatId}:${targetUserId}`
+                    text: '✅ Continue Session',
+                    callback_data: `continue_after_compact:${sessionId.slice(-8)}:${targetChatId}:${targetUserId}`
                   }
                 ]]
               }
@@ -2105,24 +2105,35 @@ class SessionManager {
   /**
    * Handle continue button callback after compact
    */
-  async handleContinueAfterCompact(sessionId, chatId, messageId, userId) {
+  async handleContinueAfterCompact(shortSessionId, chatId, messageId, userId) {
     try {
       const session = this.getUserSession(userId);
       
       if (session && session.processor) {
-        // Send 'continue' message to Claude to resume the session
-        await session.processor.continueConversation('continue', sessionId);
+        // Use the current session ID from the user's session (auto-compact works on current session)
+        const fullSessionId = session.processor.getCurrentSessionId();
         
-        // Update the button message
-        await this.bot.editMessageText(
-          '✅ **Session resumed**\n\nConversation has been resumed. You can continue chatting.',
-          {
-            chat_id: chatId,
-            message_id: messageId
-          }
-        );
+        // Verify the short session ID matches (safety check)
+        if (fullSessionId && fullSessionId.slice(-8) === shortSessionId) {
+          // Send 'continue' message to Claude to resume the session
+          await session.processor.continueConversation('continue', fullSessionId);
         
-        console.log(`[User ${userId}] Session ${sessionId.slice(-8)} resumed after compact`);
+          // Update the button message
+          await this.bot.editMessageText(
+            '✅ **Session resumed**\n\nConversation has been resumed. You can continue chatting.',
+            {
+              chat_id: chatId,
+              message_id: messageId
+            }
+          );
+          
+          console.log(`[User ${userId}] Session ${fullSessionId.slice(-8)} resumed after compact`);
+        } else {
+          // Session ID mismatch - shouldn't happen but handle gracefully
+          await this.mainBot.safeSendMessage(chatId, 
+            '⚠️ **Session mismatch**\n\nPlease start a new conversation.'
+          );
+        }
       } else {
         await this.mainBot.safeSendMessage(chatId, 
           '⚠️ **Session not found**\n\nPlease start a new conversation.'

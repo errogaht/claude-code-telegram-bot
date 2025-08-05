@@ -14,6 +14,7 @@ const KeyboardHandlers = require('./KeyboardHandlers');
 const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
+const InputSummaryService = require('./InputSummaryService');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -66,6 +67,9 @@ class StreamTelegramBot {
     
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
+    
+    // Input summary service
+    this.summaryService = new InputSummaryService();
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -1368,11 +1372,19 @@ class StreamTelegramBot {
   async pinHumanInputMessage(originalText, userId, chatId) {
     try {
       const textToProcess = originalText === null ? 'null' : (originalText || '');
-      const truncatedText = textToProcess.length > 100 
-        ? textToProcess.substring(0, 100) + '...'
-        : textToProcess;
       
-      const message = `#human_input\n\n💬 **User Input:**\n${truncatedText}`;
+      // Generate intelligent summary using Claude
+      let summaryText = '';
+      try {
+        console.log(`[User ${userId}] Generating intelligent summary for pinned message...`);
+        const summary = await this.summaryService.generateSummary(textToProcess);
+        summaryText = `📝 **Summary**: ${summary}\n\n`;
+      } catch (error) {
+        console.error(`[User ${userId}] Summary generation failed:`, error.message);
+        summaryText = ''; // No summary if failed
+      }
+      
+      const message = `#human_input\n\n${summaryText}💬 **User Input:**\n${textToProcess}`;
       
       const sentMessage = await this.safeSendMessage(chatId, message, {
         disable_notification: true
@@ -1382,7 +1394,7 @@ class StreamTelegramBot {
         await this.bot.pinChatMessage(chatId, sentMessage.message_id, {
           disable_notification: true
         });
-        console.log(`[Chat ${chatId}] Pinned human input message for user ${userId}`);
+        console.log(`[Chat ${chatId}] Pinned human input message with summary for user ${userId}`);
       }
     } catch (error) {
       console.error(`[Chat ${chatId}] Failed to pin human input message:`, error.message);
@@ -1652,8 +1664,20 @@ class StreamTelegramBot {
     
     console.log(`[User ${userId}] Sending concatenated message with ${buffer.length} parts`);
     
-    // Send notification
-    await this.safeSendMessage(chatId, `📤 **Sending Combined Message**\n\nProcessing ${buffer.length} messages...`, {
+    // Generate intelligent summary using Claude
+    let summaryText = '';
+    try {
+      console.log(`[User ${userId}] Generating intelligent summary...`);
+      const summary = await this.summaryService.generateSummary(combinedMessage);
+      summaryText = `📝 **Summary**: ${summary}\n\n`;
+    } catch (error) {
+      console.error(`[User ${userId}] Summary generation failed:`, error.message);
+      summaryText = ''; // No summary if failed
+    }
+    
+    // Send enhanced notification with summary
+    const notificationText = `📤 **Sending Combined Message**\n\n${summaryText}Processing ${buffer.length} messages...`;
+    await this.safeSendMessage(chatId, notificationText, {
       reply_markup: this.keyboardHandlers.createReplyKeyboard(userId)
     });
     
