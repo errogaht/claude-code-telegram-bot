@@ -409,7 +409,7 @@ describe('Bot HTML Messaging', () => {
   describe('Pin Human Input Message', () => {
     test('should pin human input message with hashtag and truncate long text', async () => {
       const longText = 'a'.repeat(150);
-      const expectedMarkdownMessage = `#human_input\n\n💬 **User Input:**\n${'a'.repeat(100)}...`;
+      const expectedMarkdownMessage = `#human_input\n\n💬 **User Input:**\n${longText}`; // No truncation for 150 chars (under 4000 limit)
       
       await bot.pinHumanInputMessage(longText, 12345, 67890);
 
