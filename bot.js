@@ -1383,10 +1383,40 @@ class StreamTelegramBot {
   }
 
   /**
+   * Pin human input message with hashtag for easy searching
+   */
+  async pinHumanInputMessage(originalText, userId, chatId) {
+    try {
+      const textToProcess = originalText === null ? 'null' : (originalText || '');
+      const truncatedText = textToProcess.length > 100 
+        ? textToProcess.substring(0, 100) + '...'
+        : textToProcess;
+      
+      const message = `#human_input\n\n💬 **User Input:**\n${truncatedText}`;
+      
+      const sentMessage = await this.safeSendMessage(chatId, message, {
+        disable_notification: true
+      });
+
+      if (sentMessage && sentMessage.message_id) {
+        await this.bot.pinChatMessage(chatId, sentMessage.message_id, {
+          disable_notification: true
+        });
+        console.log(`[Chat ${chatId}] Pinned human input message for user ${userId}`);
+      }
+    } catch (error) {
+      console.error(`[Chat ${chatId}] Failed to pin human input message:`, error.message);
+    }
+  }
+
+  /**
    * Process user message (unified handler for text and voice)
    */
   async processUserMessage(text, userId, chatId) {
     console.log(`[ProcessUserMessage] Starting to process message for user ${userId}: "${text}"`);
+    
+    // Pin human input message with hashtag for easy searching
+    await this.pinHumanInputMessage(text, userId, chatId);
     
     // Admin access already checked in message handler
     
