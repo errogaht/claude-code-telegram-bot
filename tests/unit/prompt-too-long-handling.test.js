@@ -100,8 +100,37 @@ describe('Prompt Too Long Error Handling', () => {
         detectedError = error;
       });
       
-      // Simulate process exit code 1
-      processor.processExitCode = 1;
+      // Set session ID for the processor
+      processor.sessionId = 'test-session';
+      
+      // Create a mock process to simulate the close event
+      const mockProcess = new EventEmitter();
+      processor.currentProcess = mockProcess;
+      processor.isProcessing = true;
+      
+      // Set up the close event handler manually (normally done in _spawnClaudeProcess)
+      mockProcess.on('close', (code) => {
+        processor.processExitCode = code;
+        processor.isProcessing = false;
+        processor.currentProcess = null;
+        
+        // Check if prompt-too-long was detected during processing and process failed
+        if (processor.promptTooLongDetected && code === 1) {
+          processor.emit('prompt-too-long', {
+            type: 'prompt-too-long',
+            message: 'Prompt is too long - context limit exceeded',
+            sessionId: processor.sessionId
+          });
+        }
+        
+        // Reset the flag for next run
+        processor.promptTooLongDetected = false;
+        
+        processor.emit('complete', {
+          success: code === 0,
+          sessionId: processor.sessionId
+        });
+      });
       
       // Simulate text response with "prompt too long" pattern
       const mockMessage = {
@@ -118,12 +147,18 @@ describe('Prompt Too Long Error Handling', () => {
         session_id: 'test-session'
       };
       
-      // This should trigger the new event
+      // Process the text (this should set the flag but not emit the event yet)
       processor._emitSpecificEvents(mockMessage);
+      expect(detectedError).toBeNull(); // Event should not be emitted yet
+      expect(processor.promptTooLongDetected).toBe(true); // Flag should be set
       
+      // Simulate process completion with exit code 1
+      mockProcess.emit('close', 1);
+      
+      // Now the event should be emitted
       expect(detectedError).toBeDefined();
       expect(detectedError.type).toBe('prompt-too-long');
-      expect(detectedError.message).toContain('Prompt is too long');
+      expect(detectedError.message).toContain('context limit exceeded');
       expect(detectedError.sessionId).toBe('test-session');
     });
     

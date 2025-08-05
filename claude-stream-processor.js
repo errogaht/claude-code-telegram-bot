@@ -40,6 +40,7 @@ class ClaudeStreamProcessor extends EventEmitter {
     this.isProcessing = false;
     this.messageBuffer = '';
     this.processExitCode = null;
+    this.promptTooLongDetected = false; // Track if "prompt too long" was detected during processing
 
     // Test support: Store last Claude arguments for validation
     this.lastClaudeArgs = null;
@@ -134,6 +135,7 @@ class ClaudeStreamProcessor extends EventEmitter {
       this.isProcessing = true;
       this.messageBuffer = '';
       this.processExitCode = null;
+      this.promptTooLongDetected = false; // Reset prompt-too-long detection for new process
 
       console.log('[ClaudeStream] Working directory:', this.options.workingDirectory);
       console.log('[ClaudeStream] Spawning Claude with args:', args);
@@ -266,6 +268,19 @@ class ClaudeStreamProcessor extends EventEmitter {
         this.isProcessing = false;
         this.currentProcess = null;
         
+        // Check if prompt-too-long was detected during processing and process failed
+        if (this.promptTooLongDetected && code === 1) {
+          console.log('[ClaudeStream] Prompt too long confirmed with exit code 1 - triggering auto-compact');
+          this.emit('prompt-too-long', {
+            type: 'prompt-too-long',
+            message: 'Prompt is too long - context limit exceeded',
+            sessionId: this.sessionId
+          });
+        }
+        
+        // Reset the flag for next run
+        this.promptTooLongDetected = false;
+        
         this.emit('complete', {
           success: code === 0,
           sessionId: this.sessionId
@@ -355,14 +370,10 @@ class ClaudeStreamProcessor extends EventEmitter {
       if (Array.isArray(content)) {
         content.forEach((item) => {
           if (item.type === 'text') {
-            // Check for "prompt too long" in text responses with exit code 1
-            if (this._isPromptTooLongError(item.text) && this.processExitCode === 1) {
-              this.emit('prompt-too-long', {
-                type: 'prompt-too-long',
-                message: item.text,
-                sessionId: message.session_id || this.sessionId
-              });
-              return;
+            // Check for "prompt too long" in text responses - store for later processing
+            if (this._isPromptTooLongError(item.text)) {
+              this.promptTooLongDetected = true;
+              console.log('[ClaudeStream] Prompt too long detected in text - will check on process completion');
             }
             
             // Claude's thoughts/text
