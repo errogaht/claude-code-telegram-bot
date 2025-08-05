@@ -260,6 +260,12 @@ class SessionManager {
       }
     });
 
+    // Prompt too long errors - trigger auto-compact
+    processor.on('prompt-too-long', async (data) => {
+      console.log(`[User ${userId}] Prompt too long detected - triggering auto-compact`);
+      await this.handleClaudeCodeError(data.sessionId, data);
+    });
+
     // Errors
     processor.on('error', async (error) => {
       console.error(`[User ${userId}] Claude error:`, error);
@@ -693,9 +699,25 @@ class SessionManager {
           text += `   ↳ 📝 Current session: ${(currentTokens.totalInputTokens + currentTokens.totalOutputTokens).toLocaleString()} tokens\n`;
         }
         
-        // Warning when approaching limit
-        if (usagePercentage > 80) {
-          text += '⚠️ **Close to limit - consider /compact soon**\n';
+        // Calculate and show tool results size
+        const toolResultsTokens = await this.calculateToolResultsSize(sessionId);
+        if (toolResultsTokens > 0) {
+          text += `🔧 **Tool Results:** ${toolResultsTokens.toLocaleString()} tokens\n`;
+          
+          // Recalculate real context usage including tool results
+          const realContextUsage = coreTokens + toolResultsTokens;
+          const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
+          text += `📊 **Real Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n`;
+          
+          // Update warning threshold based on real usage
+          if (realUsagePercentage > 80) {
+            text += '⚠️ **High tool results accumulation - consider /compact**\n';
+          }
+        } else {
+          // Warning when approaching limit (original logic)
+          if (usagePercentage > 80) {
+            text += '⚠️ **Close to limit - consider /compact soon**\n';
+          }
         }
         
         text += '\n';
@@ -1963,6 +1985,232 @@ class SessionManager {
       } catch (error) {
         console.error(`[User ${userId}] Failed to update session title:`, error.message);
       }
+    }
+  }
+
+  /**
+   * Handle Claude Code errors, specifically "prompt too long" errors
+   */
+  async handleClaudeCodeError(sessionId, error) {
+    try {
+      // Find the session that corresponds to this sessionId
+      let targetSession = null;
+      let targetUserId = null;
+      let targetChatId = null;
+
+      for (const [userId, session] of this.userSessions) {
+        if (session.sessionId === sessionId) {
+          targetSession = session;
+          targetUserId = userId;
+          targetChatId = session.chatId;
+          break;
+        }
+      }
+
+      if (!targetSession) {
+        console.error(`[SessionManager] No active session found for ID: ${sessionId}`);
+        return;
+      }
+
+      if (error.type === 'prompt-too-long') {
+        console.log(`[User ${targetUserId}] Handling prompt too long error for session ${sessionId.slice(-8)}`);
+        
+        // Send notification about auto-compact trigger
+        await this.mainBot.safeSendMessage(targetChatId, 
+          '🔄 **Auto-compact triggered**\n\n' +
+          '⚠️ Claude Code returned "prompt too long" error\n' +
+          '🛠️ Compacting session automatically...\n\n' +
+          '⏳ Please wait...'
+        );
+
+        // Execute compact command
+        const compactSuccess = await this._executeClaudeCompact(sessionId);
+        
+        if (compactSuccess) {
+          // Send success message with continue button
+          await this.mainBot.safeSendMessage(targetChatId,
+            '✅ **Auto-compact completed**\n\n' +
+            '🔄 Session has been compacted successfully\n' +
+            '💡 You can now continue your conversation',
+            {
+              reply_markup: {
+                inline_keyboard: [[
+                  {
+                    text: '✅ Продолжить сессию',
+                    callback_data: `continue_after_compact:${sessionId}:${targetChatId}:${targetUserId}`
+                  }
+                ]]
+              }
+            }
+          );
+        } else {
+          await this.mainBot.safeSendMessage(targetChatId,
+            '❌ **Auto-compact failed**\n\n' +
+            'Please try running manual compact or start a new session.'
+          );
+        }
+      }
+    } catch (error) {
+      console.error('[SessionManager] Error handling Claude Code error:', error);
+    }
+  }
+
+  /**
+   * Execute Claude compact command
+   */
+  async _executeClaudeCompact(sessionId) {
+    return new Promise((resolve) => {
+      try {
+        const { spawn } = require('child_process');
+        
+        console.log(`[SessionManager] Executing compact for session ${sessionId.slice(-8)}`);
+        
+        const compactProcess = spawn('claude', ['-r', sessionId, '/compact'], {
+          cwd: this.options.workingDirectory,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let stderr = '';
+
+        compactProcess.stdout.on('data', () => {
+          // Compact output is not needed, just consume the stream
+        });
+
+        compactProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        compactProcess.on('close', (code) => {
+          if (code === 0) {
+            console.log(`[SessionManager] Compact successful for session ${sessionId.slice(-8)}`);
+            resolve(true);
+          } else {
+            console.error(`[SessionManager] Compact failed for session ${sessionId.slice(-8)}:`, stderr);
+            resolve(false);
+          }
+        });
+
+        compactProcess.on('error', (error) => {
+          console.error('[SessionManager] Compact process error:', error);
+          resolve(false);
+        });
+
+      } catch (error) {
+        console.error('[SessionManager] Error executing compact:', error);
+        resolve(false);
+      }
+    });
+  }
+
+  /**
+   * Handle continue button callback after compact
+   */
+  async handleContinueAfterCompact(sessionId, chatId, messageId, userId) {
+    try {
+      const session = this.getUserSession(userId);
+      
+      if (session && session.processor) {
+        // Send 'continue' message to Claude to resume the session
+        await session.processor.continueConversation('continue', sessionId);
+        
+        // Update the button message
+        await this.bot.editMessageText(
+          '✅ **Session resumed**\n\nConversation has been resumed. You can continue chatting.',
+          {
+            chat_id: chatId,
+            message_id: messageId
+          }
+        );
+        
+        console.log(`[User ${userId}] Session ${sessionId.slice(-8)} resumed after compact`);
+      } else {
+        await this.mainBot.safeSendMessage(chatId, 
+          '⚠️ **Session not found**\n\nPlease start a new conversation.'
+        );
+      }
+    } catch (error) {
+      console.error('[SessionManager] Error handling continue after compact:', error);
+      await this.mainBot.safeSendMessage(chatId, 
+        '❌ **Error resuming session**\n\nPlease try starting a new conversation.'
+      );
+    }
+  }
+
+  /**
+   * Calculate tool results size from session JSONL file
+   */
+  async calculateToolResultsSize(sessionId, customSessionsDir = null) {
+    // Check cache first
+    if (this.toolResultsCache && this.toolResultsCache.has(sessionId)) {
+      return this.toolResultsCache.get(sessionId);
+    }
+    
+    try {
+      const path = require('path');
+      const fs = require('fs').promises;
+      const os = require('os');
+
+      // Use custom sessions directory for testing, otherwise compute real one
+      let sessionsDir;
+      if (customSessionsDir) {
+        sessionsDir = customSessionsDir;
+      } else {
+        // Convert project path to Claude Code directory format
+        const projectPath = this.options.workingDirectory;
+        const claudeProjectDir = projectPath.replace(/\//g, '-').replace(/^-/, '');
+        sessionsDir = path.join(os.homedir(), '.claude', 'projects', `-${claudeProjectDir}`);
+      }
+      
+      const sessionFilePath = path.join(sessionsDir, `${sessionId}.jsonl`);
+
+      // Check if session file exists
+      await fs.access(sessionFilePath);
+      
+      // Read the session file and extract tool results
+      const content = await fs.readFile(sessionFilePath, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+      
+      let totalToolResultsChars = 0;
+      
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          
+          // Look for tool_result content in user messages
+          if (data.type === 'user' && data.message && data.message.content) {
+            const messageContent = data.message.content;
+            
+            if (Array.isArray(messageContent)) {
+              for (const item of messageContent) {
+                if (item.type === 'tool_result' && item.content) {
+                  const contentStr = typeof item.content === 'string' ? item.content : JSON.stringify(item.content);
+                  totalToolResultsChars += contentStr.length;
+                }
+              }
+            }
+          }
+        } catch {
+          // Skip invalid JSON lines
+          continue;
+        }
+      }
+      
+      // Convert characters to approximate token count (chars/4)
+      const estimatedTokens = Math.ceil(totalToolResultsChars / 4);
+      
+      // Cache the result
+      if (!this.toolResultsCache) {
+        this.toolResultsCache = new Map();
+      }
+      this.toolResultsCache.set(sessionId, estimatedTokens);
+      
+      console.log(`[SessionManager] Tool results size for ${sessionId.slice(-8)}: ${estimatedTokens} tokens (${totalToolResultsChars} chars)`);
+      
+      return estimatedTokens;
+      
+    } catch (error) {
+      console.error(`[SessionManager] Error calculating tool results size for ${sessionId}:`, error.message);
+      return 0; // Return 0 if calculation fails
     }
   }
 

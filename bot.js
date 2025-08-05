@@ -321,6 +321,10 @@ class StreamTelegramBot {
           if (!handled) {
             console.log(`[COMPONENT] Settings callback not handled: "${data}", chatId: ${chatId}`);
           }
+        } else if (data.startsWith('continue_after_compact:')) {
+          const [, sessionId, chatId, userId] = data.split(':');
+          console.log(`[COMPONENT] SessionManager.handleContinueAfterCompact - sessionId: "${sessionId}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          await this.sessionManager.handleContinueAfterCompact(sessionId, chatId, messageId, parseInt(userId));
         } else {
           console.log(`[COMPONENT] Unknown button data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
         }

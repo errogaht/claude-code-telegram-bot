@@ -39,7 +39,8 @@ class ClaudeStreamProcessor extends EventEmitter {
     this.sessionId = null;
     this.isProcessing = false;
     this.messageBuffer = '';
-    
+    this.processExitCode = null;
+
     // Test support: Store last Claude arguments for validation
     this.lastClaudeArgs = null;
     this.lastClaudeOptions = null;
@@ -132,7 +133,8 @@ class ClaudeStreamProcessor extends EventEmitter {
 
       this.isProcessing = true;
       this.messageBuffer = '';
-      
+      this.processExitCode = null;
+
       console.log('[ClaudeStream] Working directory:', this.options.workingDirectory);
       console.log('[ClaudeStream] Spawning Claude with args:', args);
       
@@ -254,12 +256,13 @@ class ClaudeStreamProcessor extends EventEmitter {
       this.currentProcess.stderr.on('data', (data) => {
         const errorText = data.toString();
         console.error('[ClaudeStream] stderr:', errorText);
-        this.emit('error', new Error(errorText));
+        this._handleStderrData(errorText);
       });
 
       // Handle process completion
       this.currentProcess.on('close', (code) => {
         console.log('[ClaudeStream] Process completed with code:', code);
+        this.processExitCode = code;
         this.isProcessing = false;
         this.currentProcess = null;
         
@@ -352,6 +355,16 @@ class ClaudeStreamProcessor extends EventEmitter {
       if (Array.isArray(content)) {
         content.forEach((item) => {
           if (item.type === 'text') {
+            // Check for "prompt too long" in text responses with exit code 1
+            if (this._isPromptTooLongError(item.text) && this.processExitCode === 1) {
+              this.emit('prompt-too-long', {
+                type: 'prompt-too-long',
+                message: item.text,
+                sessionId: message.session_id || this.sessionId
+              });
+              return;
+            }
+            
             // Claude's thoughts/text
             this.emit('assistant-text', {
               text: item.text,
@@ -524,6 +537,38 @@ class ClaudeStreamProcessor extends EventEmitter {
         }
       }, 5000);
     }
+  }
+
+  /**
+   * Handle stderr data and detect specific error types
+   */
+  _handleStderrData(errorText) {
+    // Check for "prompt too long" errors
+    if (this._isPromptTooLongError(errorText)) {
+      this.emit('prompt-too-long', {
+        type: 'prompt-too-long',
+        message: errorText,
+        sessionId: this.sessionId
+      });
+      return;
+    }
+    
+    // Emit generic error for other cases
+    this.emit('error', new Error(errorText));
+  }
+
+  /**
+   * Check if error message indicates prompt too long
+   */
+  _isPromptTooLongError(errorText) {
+    const promptTooLongPatterns = [
+      /input length and max_tokens exceed context limit/i,
+      /exceed context limit/i,
+      /context limit.*exceeded/i,
+      /prompt.*too.*long/i
+    ];
+    
+    return promptTooLongPatterns.some(pattern => pattern.test(errorText));
   }
 
   /**
