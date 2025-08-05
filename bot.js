@@ -897,21 +897,6 @@ class StreamTelegramBot {
     };
   }
 
-  /**
-   * Sanitize HTML content to fix malformed patterns while preserving valid HTML
-   */
-  sanitizeHtmlContent(text) {
-    if (!text || typeof text !== 'string') return '';
-    
-    // Find malformed HTML-like patterns that could cause Telegram API errors
-    // Pattern: < followed immediately by quote/apostrophe (these are never valid HTML tags)
-    const malformedPatterns = /<['"`][^<>]*(?![>])/g;
-    
-    return text.replace(malformedPatterns, (match) => {
-      // Escape the malformed pattern by replacing < with &lt;
-      return match.replace(/</g, '&lt;');
-    });
-  }
 
   /**
    * Safely send message with proper Telegram markdown sanitization
@@ -920,16 +905,10 @@ class StreamTelegramBot {
     let htmlText = text;
     try {
       
-      // Convert markdown to HTML if text doesn't already contain HTML tags
-      const containsHtml = /<[^>]+>/.test(text);
-      if (!containsHtml) {
-        const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
-        const converter = new MarkdownHtmlConverter();
-        htmlText = converter.convert(text);
-      } else {
-        // Even if text contains HTML, validate and fix malformed patterns
-        htmlText = this.sanitizeHtmlContent(text);
-      }
+      // Always convert markdown to HTML using unified converter
+      const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+      const converter = new MarkdownHtmlConverter();
+      htmlText = converter.convert(text);
       
       const messageOptions = {
         ...options,
@@ -1000,13 +979,10 @@ class StreamTelegramBot {
     try {
       let htmlText = text;
       
-      // Convert markdown to HTML if text doesn't already contain HTML tags
-      const containsHtml = /<[^>]+>/.test(text);
-      if (!containsHtml) {
-        const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
-        const converter = new MarkdownHtmlConverter();
-        htmlText = converter.convert(text);
-      }
+      // Always convert markdown to HTML using unified converter
+      const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+      const converter = new MarkdownHtmlConverter();
+      htmlText = converter.convert(text);
       
       const messageOptions = {
         ...options,

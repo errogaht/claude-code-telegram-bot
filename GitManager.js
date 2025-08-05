@@ -809,12 +809,8 @@ class GitManager {
       { text: '🔄 Refresh', callback_data: 'git:refresh' }
     ]);
 
-    // Convert Markdown to HTML for more reliable parsing
-    const htmlText = text
-      .replace(/\*([^*]+)\*/g, '<b>$1</b>')  // Convert *text* to <b>text</b>
-      .replace(/`([^`]+)`/g, '<code>$1</code>'); // Convert `text` to <code>text</code>
-    
-    await this.mainBot.safeSendMessage(chatId, htmlText, {
+    // Send markdown text directly - MarkdownHtmlConverter will handle conversion
+    await this.mainBot.safeSendMessage(chatId, text, {
       reply_markup: keyboard
     });
   }
@@ -2328,23 +2324,23 @@ class GitManager {
       const endLine = Math.min(startLine + linesPerPage, lines.length);
       const displayLines = lines.slice(startLine, endLine);
       
-      let formattedDiff = `🆕 <b>${this.escapeHtml(shortName)}</b> (new file)\n`;
+      let formattedDiff = `🆕 **${this.escapeMarkdown(shortName)}** (new file)\n`;
       
       // Add pagination info if multiple pages
       if (totalPages > 1) {
-        formattedDiff += `📄 <i>Page ${page + 1} of ${totalPages} (lines ${startLine + 1}-${endLine} of ${lines.length})</i>\n`;
+        formattedDiff += `📄 *Page ${page + 1} of ${totalPages} (lines ${startLine + 1}-${endLine} of ${lines.length})*\n`;
       } else {
-        formattedDiff += `📄 <i>${lines.length} lines</i>\n`;
+        formattedDiff += `📄 *${lines.length} lines*\n`;
       }
       
-      formattedDiff += '\n<pre><code>';
+      formattedDiff += '\n```\n';
       
       displayLines.forEach((line, index) => {
         const lineNumber = startLine + index + 1;
-        formattedDiff += `${lineNumber}: ${this.escapeHtml(line)}\n`;
+        formattedDiff += `${lineNumber}: ${line}\n`;
       });
       
-      formattedDiff += '</code></pre>';
+      formattedDiff += '```';
       
       return {
         content: formattedDiff,
@@ -2355,7 +2351,7 @@ class GitManager {
       
     } catch (readError) {
       return {
-        content: `❌ <b>Cannot read file: ${this.escapeHtml(path.basename(filename))}</b>\n\nError: ${readError.message}`,
+        content: `❌ **Cannot read file: ${this.escapeMarkdown(path.basename(filename))}**\n\nError: ${readError.message}`,
         totalPages: 1,
         currentPage: 0,
         totalLines: 0
