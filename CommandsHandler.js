@@ -26,6 +26,11 @@ class CommandsHandler {
     }
 
     const commands = [];
+
+    // Add default Claude Code commands first
+    const defaultCommands = this.getDefaultClaudeCodeCommands();
+    commands.push(...defaultCommands);
+
     const projectCommandsDir = path.join(process.cwd(), '.claude', 'commands');
     const globalCommandsDir = path.join(process.env.HOME || process.env.USERPROFILE, '.claude', 'commands');
 
@@ -35,14 +40,216 @@ class CommandsHandler {
     // Discover global commands  
     await this.discoverCommandsInDirectory(globalCommandsDir, commands, 'global');
 
-    // Sort commands alphabetically
-    commands.sort((a, b) => a.name.localeCompare(b.name));
+    // Sort only custom commands (keep default commands at top)
+    const defaultCommandsCount = defaultCommands.length;
+    const customCommands = commands.slice(defaultCommandsCount);
+    customCommands.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Reconstruct array with default commands first, then sorted custom commands
+    const finalCommands = [...defaultCommands, ...customCommands];
 
     // Update cache
-    this.commandsCache = commands;
+    this.commandsCache = finalCommands;
     this.cacheTimestamp = Date.now();
 
-    return commands;
+    return finalCommands;
+  }
+
+  /**
+   * Get default Claude Code slash commands
+   */
+  getDefaultClaudeCodeCommands() {
+    return [
+      {
+        name: 'add-dir',
+        scope: 'built-in',
+        slashCommand: '/add-dir',
+        description: 'Add additional working directories',
+        argumentHint: '[directory-path]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'agents',
+        scope: 'built-in', 
+        slashCommand: '/agents',
+        description: 'Manage custom AI subagents',
+        argumentHint: '[list|create|delete] [agent-name]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'bug',
+        scope: 'built-in',
+        slashCommand: '/bug',
+        description: 'Report bugs to Anthropic',
+        argumentHint: '[bug-description]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'clear',
+        scope: 'built-in',
+        slashCommand: '/clear',
+        description: 'Clear conversation history',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'compact',
+        scope: 'built-in',
+        slashCommand: '/compact',
+        description: 'Compact conversation with optional focus',
+        argumentHint: '[focus-topic]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'config',
+        scope: 'built-in',
+        slashCommand: '/config',
+        description: 'View/modify configuration',
+        argumentHint: '[setting] [value]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'cost',
+        scope: 'built-in',
+        slashCommand: '/cost',
+        description: 'Show token usage statistics',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'doctor',
+        scope: 'built-in',
+        slashCommand: '/doctor',
+        description: 'Check Claude Code installation health',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'help',
+        scope: 'built-in',
+        slashCommand: '/help',
+        description: 'Get usage help',
+        argumentHint: '[topic]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'init',
+        scope: 'built-in',
+        slashCommand: '/init',
+        description: 'Initialize project with CLAUDE.md guide',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'login',
+        scope: 'built-in',
+        slashCommand: '/login',
+        description: 'Switch Anthropic accounts',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'logout',
+        scope: 'built-in',
+        slashCommand: '/logout',
+        description: 'Sign out from Anthropic account',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'mcp',
+        scope: 'built-in',
+        slashCommand: '/mcp',
+        description: 'Manage MCP server connections',
+        argumentHint: '[list|add|remove] [server-name]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'memory',
+        scope: 'built-in',
+        slashCommand: '/memory',
+        description: 'Edit CLAUDE.md memory files',
+        argumentHint: '[global|local]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'model',
+        scope: 'built-in',
+        slashCommand: '/model',
+        description: 'Select or change AI model',
+        argumentHint: '[model-name]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'permissions',
+        scope: 'built-in',
+        slashCommand: '/permissions',
+        description: 'View or update permissions',
+        argumentHint: '[view|update]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'pr_comments',
+        scope: 'built-in',
+        slashCommand: '/pr_comments',
+        description: 'View pull request comments',
+        argumentHint: '[pr-number]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'review',
+        scope: 'built-in',
+        slashCommand: '/review',
+        description: 'Request code review',
+        argumentHint: '[file-path]',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'status',
+        scope: 'built-in',
+        slashCommand: '/status',
+        description: 'View account and system statuses',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'terminal-setup',
+        scope: 'built-in',
+        slashCommand: '/terminal-setup',
+        description: 'Install Shift+Enter key binding',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      },
+      {
+        name: 'vim',
+        scope: 'built-in',
+        slashCommand: '/vim',
+        description: 'Enter vim mode for alternating modes',
+        argumentHint: '',
+        allowedTools: [],
+        filePath: null
+      }
+    ];
   }
 
   /**
@@ -181,7 +388,14 @@ class CommandsHandler {
       // Add numbered commands (1-10)
       pageCommands.forEach((command, index) => {
         const number = index + 1;
-        const scopeIcon = command.scope === 'global' ? '🌍' : '📁';
+        let scopeIcon;
+        if (command.scope === 'built-in') {
+          scopeIcon = '⚡';
+        } else if (command.scope === 'global') {
+          scopeIcon = '🌍';
+        } else {
+          scopeIcon = '📁';
+        }
         message += `**${number}.** ${scopeIcon} \`${command.slashCommand}\`\n`;
         if (command.description) {
           message += `   ${command.description}\n`;
@@ -327,7 +541,14 @@ class CommandsHandler {
    */
   async showArgumentInput(chatId, userId, command, messageId) {
     try {
-      const scopeIcon = command.scope === 'global' ? '🌍' : '📁';
+      let scopeIcon;
+      if (command.scope === 'built-in') {
+        scopeIcon = '⚡';
+      } else if (command.scope === 'global') {
+        scopeIcon = '🌍';
+      } else {
+        scopeIcon = '📁';
+      }
       let message = '⚡ **Execute Command**\n\n';
       message += `${scopeIcon} \`${command.slashCommand}\`\n`;
       

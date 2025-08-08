@@ -341,6 +341,10 @@ class StreamTelegramBot {
           const [, sessionId, chatId, userId] = data.split(':');
           console.log(`[COMPONENT] SessionManager.handleContinueAfterCompact - sessionId: "${sessionId}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.sessionManager.handleContinueAfterCompact(sessionId, chatId, messageId, parseInt(userId));
+        } else if (data.startsWith('start_new_session:')) {
+          const [, userId, chatId] = data.split(':');
+          console.log(`[COMPONENT] SessionManager.handleStartNewSession - userId: ${userId}, chatId: ${chatId}, messageId: ${messageId}`);
+          await this.sessionManager.handleStartNewSession(parseInt(userId), parseInt(chatId), messageId);
         } else {
           console.log(`[COMPONENT] Unknown button data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
         }

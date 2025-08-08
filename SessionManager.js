@@ -2027,8 +2027,23 @@ class SessionManager {
           );
         } else {
           await this.mainBot.safeSendMessage(targetChatId,
-            '❌ **Auto-compact failed**\n\n' +
-            'Please try running manual compact or start a new session.'
+            '❌ **Session Recovery Failed**\n\n' +
+            '🔧 Auto-compact completed, but the session cannot be resumed\n' +
+            '📄 This usually means the session file is too corrupted to recover\n\n' +
+            '💡 **Options:**\n' +
+            '• Start a new session (recommended)\n' +
+            '• Try manual compact: `claude -r [session-id] /compact`\n' +
+            '• Contact support if the issue persists',
+            {
+              reply_markup: {
+                inline_keyboard: [[
+                  {
+                    text: '🆕 Start New Session',
+                    callback_data: `start_new_session:${targetUserId}:${targetChatId}`
+                  }
+                ]]
+              }
+            }
           );
         }
       }
@@ -2062,10 +2077,20 @@ class SessionManager {
           stderr += data.toString();
         });
 
-        compactProcess.on('close', (code) => {
+        compactProcess.on('close', async (code) => {
           if (code === 0) {
-            console.log(`[SessionManager] Compact successful for session ${sessionId.slice(-8)}`);
-            resolve(true);
+            console.log(`[SessionManager] Compact completed for session ${sessionId.slice(-8)}, validating...`);
+            
+            // Test if session can actually be resumed after compact
+            const isResumable = await this._validateSessionAfterCompact(sessionId);
+            
+            if (isResumable) {
+              console.log(`[SessionManager] Compact successful for session ${sessionId.slice(-8)}`);
+              resolve(true);
+            } else {
+              console.error(`[SessionManager] Session ${sessionId.slice(-8)} still corrupted after compact`);
+              resolve(false);
+            }
           } else {
             console.error(`[SessionManager] Compact failed for session ${sessionId.slice(-8)}:`, stderr);
             resolve(false);
@@ -2082,6 +2107,105 @@ class SessionManager {
         resolve(false);
       }
     });
+  }
+
+  /**
+   * Validate that a session can be resumed after compact
+   */
+  async _validateSessionAfterCompact(sessionId) {
+    return new Promise((resolve) => {
+      try {
+        const { spawn } = require('child_process');
+        
+        console.log(`[SessionManager] Validating session ${sessionId.slice(-8)} after compact`);
+        
+        // Try to resume with a simple validation message
+        const testProcess = spawn('claude', ['-r', sessionId, '--model', 'sonnet', 'echo \'validation test\''], {
+          cwd: this.options.workingDirectory,
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+        let hasResponse = false;
+
+        testProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+          // If we get any actual response (not error), session is working
+          if (stdout.includes('"type":"assistant"') || stdout.includes('validation test')) {
+            hasResponse = true;
+          }
+        });
+
+        testProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        testProcess.on('close', (code) => {
+          // Session is valid if:
+          // 1. Exit code is 0 AND we got a response, OR
+          // 2. Exit code is non-zero but we got actual content (sometimes Claude returns 1 but works)
+          const isValid = (code === 0 && hasResponse) || (hasResponse && !stderr.includes('Prompt is too long'));
+          
+          if (isValid) {
+            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation successful`);
+          } else {
+            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation failed - code: ${code}, hasResponse: ${hasResponse}, stderr: ${stderr.slice(0, 100)}`);
+          }
+          
+          resolve(isValid);
+        });
+
+        testProcess.on('error', (error) => {
+          console.error('[SessionManager] Session validation error:', error);
+          resolve(false);
+        });
+
+        // Timeout after 30 seconds
+        setTimeout(() => {
+          testProcess.kill();
+          console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation timeout`);
+          resolve(false);
+        }, 30000);
+        
+      } catch (error) {
+        console.error('[SessionManager] Error validating session after compact:', error);
+        resolve(false);
+      }
+    });
+  }
+
+  /**
+   * Handle start new session button after failed compact
+   */
+  async handleStartNewSession(userId, chatId, messageId) {
+    try {
+      // End current session if exists
+      const currentSession = this.getUserSession(userId);
+      if (currentSession) {
+        await this.endSession(chatId, userId);
+        console.log(`[User ${userId}] Ended corrupted session before starting new one`);
+      }
+
+      // Clear stored session ID
+      this.clearCurrentSessionId(userId);
+
+      // Update the button message
+      await this.bot.editMessageText(
+        '✅ **New Session Starting**\n\nPrevious session ended. Send a message to start fresh!',
+        {
+          chat_id: chatId,
+          message_id: messageId
+        }
+      );
+
+      console.log(`[User ${userId}] Started new session after failed compact recovery`);
+    } catch (error) {
+      console.error('[SessionManager] Error handling start new session:', error);
+      await this.mainBot.safeSendMessage(chatId, 
+        '⚠️ **Error starting new session**\n\nPlease try using /new command.'
+      );
+    }
   }
 
   /**
