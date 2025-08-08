@@ -956,7 +956,7 @@ class SessionManager {
             preview = preview.substring(0, 80) + '...';
           }
           
-          text += `${startIndex + index + 1}. \`${shortId}\` • ${timeAgo}\n`;
+          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}\n`;
           text += `   💬 _${preview}_\n\n`;
         });
         
@@ -1577,7 +1577,7 @@ class SessionManager {
             preview = preview.substring(0, 80) + '...';
           }
           
-          text += `${startIndex + index + 1}. \`${shortId}\` • ${timeAgo}\n`;
+          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}\n`;
           text += `   💬 _${preview}_\n\n`;
         });
         

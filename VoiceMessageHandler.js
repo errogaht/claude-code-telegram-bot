@@ -181,8 +181,9 @@ class VoiceMessageHandler {
             `📝 **Voice Added to Buffer**\n\n🎤 Transcription: "${transcribedText}"\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`
           );
         } else {
-          // Normal processing
-          await processUserMessageCallback(transcribedText, userId, chatId);
+          // Normal processing - add voice transcription prefix like in CONCAT mode
+          const prefixedMessage = `Voice Message Transcribe: ${transcribedText}`;
+          await processUserMessageCallback(prefixedMessage, userId, chatId);
         }
         
       } else if (data.startsWith('voice_cancel:')) {

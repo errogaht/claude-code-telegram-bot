@@ -420,7 +420,7 @@ describe('VoiceMessageHandler', () => {
         expect.stringContaining('✅ *Executing voice command*')
       );
       expect(voiceHandler.pendingCommands.has(123)).toBe(false);
-      expect(mockProcessCallback).toHaveBeenCalledWith('test command', 789, 456);
+      expect(mockProcessCallback).toHaveBeenCalledWith('Voice Message Transcribe: test command', 789, 456);
     });
 
     test('should handle voice_cancel callback', async () => {
@@ -538,7 +538,7 @@ describe('VoiceMessageHandler', () => {
       );
 
       expect(voiceHandler.pendingCommands.size).toBe(0);
-      expect(mockProcessCallback).toHaveBeenCalledWith('Complete voice command', 789, 456);
+      expect(mockProcessCallback).toHaveBeenCalledWith('Voice Message Transcribe: Complete voice command', 789, 456);
     });
 
     test('should handle voice workflow with cancellation', async () => {

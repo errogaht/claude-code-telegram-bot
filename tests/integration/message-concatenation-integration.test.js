@@ -168,8 +168,8 @@ describe('Message Concatenation Integration', () => {
         bot.processUserMessage.bind(bot)
       );
 
-      // Should be processed directly
-      expect(bot.processUserMessage).toHaveBeenCalledWith(transcribedText, userId, chatId);
+      // Should be processed directly with voice transcription prefix
+      expect(bot.processUserMessage).toHaveBeenCalledWith(`Voice Message Transcribe: ${transcribedText}`, userId, chatId);
       expect(bot.getBufferSize(userId)).toBe(0);
     });
   });
