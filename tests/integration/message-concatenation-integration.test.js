@@ -361,7 +361,7 @@ describe('Message Concatenation Integration', () => {
       // Enable concat mode
       await bot.enableConcatMode(userId, chatId);
 
-      // Should show "Concat Send (0)"
+      // Should show "Concat Send"
       keyboard = bot.keyboardHandlers.createReplyKeyboard(userId);
       concatButton = keyboard.keyboard.find(row => 
         row.some(button => button.text.includes('Concat Send'))
@@ -372,10 +372,10 @@ describe('Message Concatenation Integration', () => {
       await bot.addToMessageBuffer(userId, { type: 'text', content: 'Test', imagePath: null });
       await bot.addToMessageBuffer(userId, { type: 'text', content: 'Test2', imagePath: null });
 
-      // Should show "Concat Send (2)"
+      // Should show "Concat Send"
       keyboard = bot.keyboardHandlers.createReplyKeyboard(userId);
       concatButton = keyboard.keyboard.find(row => 
-        row.some(button => button.text.includes('Concat Send (2)'))
+        row.some(button => button.text.includes('Concat Send'))
       );
       expect(concatButton).toBeTruthy();
     });
@@ -401,7 +401,7 @@ describe('Message Concatenation Integration', () => {
 
       // Test "Concat Send" button
       const concatSendMessage = {
-        text: '📤 Concat Send (1)',
+        text: '📤 Concat Send',
         from: { id: userId, username },
         chat: { id: chatId }
       };

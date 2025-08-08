@@ -283,7 +283,7 @@ describe('Prompt Too Long Error Handling', () => {
       const lastCall = mockMainBot.safeSendMessage.mock.calls[mockMainBot.safeSendMessage.mock.calls.length - 1];
       expect(lastCall[1]).toContain('Auto-compact completed');
       expect(lastCall[2].reply_markup.inline_keyboard).toBeDefined();
-      expect(lastCall[2].reply_markup.inline_keyboard[0][0].text).toBe('✅ Продолжить сессию');
+      expect(lastCall[2].reply_markup.inline_keyboard[0][0].text).toBe('✅ Continue Session');
     });
   });
 

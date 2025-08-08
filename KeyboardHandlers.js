@@ -17,10 +17,7 @@ class KeyboardHandlers {
     let concatButton = { text: '🔗 Concat On' };
     
     if (userId && this.mainBot.getConcatModeStatus && this.mainBot.getConcatModeStatus(userId)) {
-      const bufferCount = this.mainBot.messageBuffer.get(userId)?.length || 0;
-      concatButton = bufferCount > 0 
-        ? { text: `📤 Concat Send (${bufferCount})` }
-        : { text: '📤 Concat Send' };
+      concatButton = { text: '📤 Concat Send' };
     }
 
     return {
@@ -33,7 +30,7 @@ class KeyboardHandlers {
         [
           { text: '🔄 New Session' },
           { text: '📝 Sessions' },
-          { text: '🤖 Model' }
+          { text: '⚡ Commands' }
         ],
         [
           { text: '🧠 Thinking' },
@@ -114,10 +111,10 @@ class KeyboardHandlers {
       return true;
     }
         
-    case '🤖 Model':
+    case '⚡ Commands':
       logKeyboardButton();
-      console.log(`[COMPONENT] StreamTelegramBot.showModelSelection - chatId: ${chatId}`);
-      await this.mainBot.showModelSelection(chatId);
+      console.log(`[COMPONENT] CommandsHandler.showCommandsMenu - chatId: ${chatId}`);
+      await this.mainBot.commandsHandler.showCommandsMenu(chatId);
       return true;
         
     case '🧠 Thinking':

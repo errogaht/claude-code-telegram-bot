@@ -176,11 +176,8 @@ describe('VoiceMessageHandler', () => {
           reply_markup: expect.objectContaining({
             inline_keyboard: expect.arrayContaining([
               expect.arrayContaining([
-                expect.objectContaining({ text: '✅ Execute' }),
-                expect.objectContaining({ text: '❌ Cancel' })
-              ]),
-              expect.arrayContaining([
-                expect.objectContaining({ text: '✏️ Edit' })
+                expect.objectContaining({ text: 'OK' }),
+                expect.objectContaining({ text: 'Cancel' })
               ])
             ])
           })
@@ -443,23 +440,6 @@ describe('VoiceMessageHandler', () => {
       expect(voiceHandler.pendingCommands.has(123)).toBe(false);
     });
 
-    test('should handle voice_edit callback', async () => {
-      await voiceHandler.handleVoiceCallback(
-        'voice_edit:456_1234567890',
-        456,
-        123,
-        789,
-        jest.fn()
-      );
-
-      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
-        456,
-        123,
-        expect.stringContaining('✏️ *Edit voice command*')
-      );
-      // Should NOT remove from pending commands for edit
-      expect(voiceHandler.pendingCommands.has(123)).toBe(true);
-    });
 
     test('should handle expired command', async () => {
       // Remove the pending command to simulate expiration
@@ -480,21 +460,6 @@ describe('VoiceMessageHandler', () => {
       );
     });
 
-    test('should include transcribed text in edit message', async () => {
-      await voiceHandler.handleVoiceCallback(
-        'voice_edit:456_1234567890',
-        456,
-        123,
-        789,
-        jest.fn()
-      );
-
-      expect(mockMainBot.safeEditMessage).toHaveBeenCalledWith(
-        456,
-        123,
-        expect.stringContaining('"test command"')
-      );
-    });
 
     test('should include transcribed text in confirm message', async () => {
       await voiceHandler.handleVoiceCallback(

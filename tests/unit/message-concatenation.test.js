@@ -351,7 +351,7 @@ describe('Message Concatenation Feature', () => {
       expect(concatButton).toBeTruthy();
     });
 
-    test('should show "Concat Send" button with count when concat mode is enabled', async () => {
+    test('should show "Concat Send" button when concat mode is enabled', async () => {
       const userId = 123456;
       const chatId = 789012;
 
@@ -370,7 +370,7 @@ describe('Message Concatenation Feature', () => {
       expect(concatButton).toBeTruthy();
     });
 
-    test('should update button count as buffer grows', async () => {
+    test('should show "Concat Send" button as buffer grows', async () => {
       const userId = 123456;
       const chatId = 789012;
 

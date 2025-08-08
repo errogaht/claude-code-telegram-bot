@@ -92,11 +92,8 @@ class VoiceMessageHandler {
       const keyboard = {
         inline_keyboard: [
           [
-            { text: '✅ Execute', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
-            { text: '❌ Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
-          ],
-          [
-            { text: '✏️ Edit', callback_data: `voice_edit:${chatId}_${Date.now()}` }
+            { text: 'OK', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
+            { text: 'Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
           ]
         ]
       };
@@ -194,15 +191,6 @@ class VoiceMessageHandler {
         );
         
         this.pendingCommands.delete(messageId);
-        
-      } else if (data.startsWith('voice_edit:')) {
-        await this.mainBot.safeEditMessage(chatId, messageId,
-          '✏️ *Edit voice command*\n\n' +
-          `📝 **Original:** "${transcribedText}"\n\n` +
-          '💬 Send the corrected text message:'
-        );
-        
-        // Keep in pending for manual text input
       }
     } catch {
       // Silently handle edit errors for callback operations

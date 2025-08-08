@@ -120,7 +120,7 @@ class SessionManager {
         ...data,
         thinkingMode: this.getUserThinkingMode(userId),
         isContinuation: session.isContinuation,
-        sessionTitle: session.sessionTitle
+        sessionTitle: this.getStoredSessionTitle(userId)
       };
       
       const formatted = this.formatter.formatSessionInit(enhancedData);
@@ -432,16 +432,11 @@ class SessionManager {
       // Save session info for current project
       const currentProject = this.options.workingDirectory;
       
-      // Get current session title if available
-      const session = this.getUserSession(userId);
-      const sessionTitle = session ? session.sessionTitle : null;
-      
       config.projectSessions[currentProject] = {
         userId: userId.toString(),
         sessionId: sessionId,
         timestamp: new Date().toISOString(),
-        model: this.options.model,
-        sessionTitle: sessionTitle
+        model: this.options.model
       };
       
       // Also update currentProject
@@ -1938,27 +1933,16 @@ class SessionManager {
    * Get stored session title from config file
    */
   getStoredSessionTitle(userId) {
-    if (!this.configFilePath) {
-      return null;
-    }
-    
-    try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      const currentProject = this.options.workingDirectory;
-      if (config.projectSessions && config.projectSessions[currentProject]) {
-        const projectSession = config.projectSessions[currentProject];
-        if (projectSession.userId === userId.toString()) {
-          return projectSession.sessionTitle || null;
-        }
-      }
-    } catch (error) {
-      console.error(`[User ${userId}] Failed to read session title from config:`, error.message);
-    }
-    
-    return null;
+    // Get session title from memory (not config)
+    const titleInfo = this.sessionTitles.get(userId);
+    return titleInfo ? titleInfo.lastTitle : null;
+  }
+
+  /**
+   * Set session title in memory only (not config)
+   */
+  setStoredSessionTitle(userId, title, chatId) {
+    this.sessionTitles.set(userId, { lastTitle: title, chatId: chatId });
   }
 
   /**
@@ -1974,12 +1958,10 @@ class SessionManager {
         const sessionId = session.sessionId || session.processor.getCurrentSessionId();
         if (sessionId) {
           const newTitle = await this.getSessionSummary(sessionId);
-          if (newTitle && newTitle !== session.sessionTitle) {
+          if (newTitle) {
             console.log(`[User ${userId}] Session title updated: "${newTitle}"`);
-            session.sessionTitle = newTitle;
-            
-            // Save updated title to config file
-            await this.saveCurrentSessionToConfig(userId, sessionId);
+            // Store title only in memory (not in config)
+            this.setStoredSessionTitle(userId, newTitle, null);
           }
         }
       } catch (error) {

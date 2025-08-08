@@ -14,6 +14,7 @@ const KeyboardHandlers = require('./KeyboardHandlers');
 const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
+const CommandsHandler = require('./CommandsHandler');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -63,6 +64,9 @@ class StreamTelegramBot {
     
     // Settings menu handler
     this.settingsHandler = new SettingsMenuHandler(this, this.voiceHandler);
+    
+    // Commands handler for slash commands management
+    this.commandsHandler = new CommandsHandler(this, this.sessionManager);
     
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
@@ -150,6 +154,11 @@ class StreamTelegramBot {
           // Check if it's a keyboard button press
           if (await this.keyboardHandlers.handleKeyboardButton(msg)) {
             return; // Button handled, don't process as regular message
+          }
+
+          // Check if CommandsHandler needs to handle this text input (command arguments)
+          if (await this.commandsHandler.handleTextMessage(msg)) {
+            return; // CommandsHandler handled the text input
           }
 
           // Check if GitManager needs to handle this text input (e.g., branch creation)
@@ -321,6 +330,12 @@ class StreamTelegramBot {
           const handled = await this.settingsHandler.handleSettingsCallback(data, chatId, messageId);
           if (!handled) {
             console.log(`[COMPONENT] Settings callback not handled: "${data}", chatId: ${chatId}`);
+          }
+        } else if (data.startsWith('cmd:')) {
+          console.log(`[COMPONENT] CommandsHandler.handleCommandsCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          const handled = await this.commandsHandler.handleCommandsCallback(data, chatId, messageId, userId);
+          if (!handled) {
+            console.log(`[COMPONENT] Commands callback not handled: "${data}", chatId: ${chatId}`);
           }
         } else if (data.startsWith('continue_after_compact:')) {
           const [, sessionId, chatId, userId] = data.split(':');

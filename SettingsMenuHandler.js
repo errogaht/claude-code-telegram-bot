@@ -1,6 +1,6 @@
 /**
- * Settings Menu Handler for Voice Transcription Configuration
- * Provides UI for selecting transcription method
+ * Settings Menu Handler for Voice Transcription Configuration and Model Selection
+ * Provides UI for selecting transcription method and AI model
  */
 class SettingsMenuHandler {
   constructor(bot, voiceHandler) {
@@ -14,6 +14,9 @@ class SettingsMenuHandler {
   async showSettingsMenu(chatId, messageId = null) {
     const keyboard = {
       inline_keyboard: [
+        [
+          { text: '🤖 AI Model Selection', callback_data: 'settings:model_selection' }
+        ],
         [
           { text: '🎤 Voice Transcription Method', callback_data: 'settings:voice_transcription' }
         ],
@@ -80,6 +83,12 @@ class SettingsMenuHandler {
    */
   async handleSettingsCallback(callbackData, chatId, messageId) {
     try {
+      if (callbackData === 'settings:model_selection') {
+        // Delegate to main bot's model selection
+        await this.bot.showModelSelection(chatId, messageId);
+        return true;
+      }
+
       if (callbackData === 'settings:voice_transcription') {
         await this.showVoiceTranscriptionSettings(chatId, messageId);
         return true;

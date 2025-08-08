@@ -27,6 +27,9 @@ const createMockMainBot = () => ({
   showThinkingModeSelection: jest.fn().mockResolvedValue(),
   gitManager: {
     showGitOverview: jest.fn().mockResolvedValue()
+  },
+  commandsHandler: {
+    showCommandsMenu: jest.fn().mockResolvedValue()
   }
 });
 
@@ -70,7 +73,7 @@ describe('KeyboardHandlers', () => {
           [
             { text: '🔄 New Session' },
             { text: '📝 Sessions' },
-            { text: '🤖 Model' }
+            { text: '⚡ Commands' }
           ],
           [
             { text: '🧠 Thinking' },
@@ -183,13 +186,13 @@ describe('KeyboardHandlers', () => {
       );
     });
 
-    test('should handle Model button', async () => {
-      const msg = createMockMessage('🤖 Model');
+    test('should handle Commands button', async () => {
+      const msg = createMockMessage('⚡ Commands');
 
       const result = await keyboardHandlers.handleKeyboardButton(msg);
 
       expect(result).toBe(true);
-      expect(mockMainBot.showModelSelection).toHaveBeenCalledWith(123);
+      expect(mockMainBot.commandsHandler.showCommandsMenu).toHaveBeenCalledWith(123);
     });
 
     test('should handle Thinking button', async () => {
