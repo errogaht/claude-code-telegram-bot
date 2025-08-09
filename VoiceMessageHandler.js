@@ -92,8 +92,8 @@ class VoiceMessageHandler {
       const keyboard = {
         inline_keyboard: [
           [
-            { text: 'OK', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
-            { text: 'Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
+            { text: '✅ OK', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
+            { text: '❌ Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
           ]
         ]
       };

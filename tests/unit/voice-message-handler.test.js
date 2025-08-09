@@ -176,8 +176,8 @@ describe('VoiceMessageHandler', () => {
           reply_markup: expect.objectContaining({
             inline_keyboard: expect.arrayContaining([
               expect.arrayContaining([
-                expect.objectContaining({ text: 'OK' }),
-                expect.objectContaining({ text: 'Cancel' })
+                expect.objectContaining({ text: '✅ OK' }),
+                expect.objectContaining({ text: '❌ Cancel' })
               ])
             ])
           })
