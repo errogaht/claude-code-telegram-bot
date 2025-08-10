@@ -3117,7 +3117,7 @@ class GitManager {
     try {
       const action = parts[2];
       
-      if (action === 'create') {
+      if (action === 'create' || action === 'prepare') {
         // Check if there are staged files
         if (!this.gitState.stagedFiles || this.gitState.stagedFiles.length === 0) {
           await this.mainBot.safeSendMessage(chatId,
