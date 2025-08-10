@@ -140,4 +140,140 @@ describe('SettingsMenuHandler', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('Voice Transcription Instant Settings', () => {
+    beforeEach(() => {
+      // Mock fs for bot config
+      const fs = require('fs');
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filepath) => {
+        if (filepath === './configs/bot1.json') {
+          return JSON.stringify({ voiceTranscriptionInstant: false });
+        }
+        return '{}';
+      });
+      jest.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+
+      // Mock voice handler methods since settings handler delegates to it
+      mockVoiceHandler.getVoiceTranscriptionInstant = jest.fn().mockReturnValue(false);
+      mockVoiceHandler.setVoiceTranscriptionInstant = jest.fn();
+    });
+
+    test('should show voice transcription instant settings', async () => {
+      await settingsHandler.showVoiceTranscriptionInstantSettings(123, 456);
+
+      expect(mockBot.safeEditMessage).toHaveBeenCalledWith(
+        123,
+        456,
+        expect.stringContaining('Voice Auto Send'),
+        expect.objectContaining({
+          reply_markup: expect.objectContaining({
+            inline_keyboard: expect.arrayContaining([
+              expect.arrayContaining([
+                expect.objectContaining({ text: '✅ Enable' })
+              ]),
+              expect.arrayContaining([
+                expect.objectContaining({ text: '❌ Disabled (Current)' })
+              ]),
+              expect.arrayContaining([
+                expect.objectContaining({ text: '🔙 Back to Settings' })
+              ])
+            ])
+          })
+        })
+      );
+    });
+
+    test('should show enabled state when instant is enabled', async () => {
+      // Mock voice handler to return enabled state
+      mockVoiceHandler.getVoiceTranscriptionInstant.mockReturnValue(true);
+
+      await settingsHandler.showVoiceTranscriptionInstantSettings(123, 456);
+
+      const callArgs = mockBot.safeEditMessage.mock.calls[0];
+      expect(callArgs[2]).toContain('Enabled');
+      expect(callArgs[3].reply_markup.inline_keyboard).toContainEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: '✅ Enabled (Current)' })
+        ])
+      );
+      expect(callArgs[3].reply_markup.inline_keyboard).toContainEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: '❌ Disable' })
+        ])
+      );
+    });
+
+    test('should handle voice instant callback', async () => {
+      const spy = jest.spyOn(settingsHandler, 'showVoiceTranscriptionInstantSettings');
+      spy.mockResolvedValue();
+
+      await settingsHandler.handleSettingsCallback('settings:voice_instant', 123, 456);
+
+      expect(spy).toHaveBeenCalledWith(123, 456);
+    });
+
+    test('should handle enable instant callback', async () => {
+      await settingsHandler.handleSettingsCallback('settings:voice_instant:enable', 123, 456);
+
+      expect(mockVoiceHandler.setVoiceTranscriptionInstant).toHaveBeenCalledWith(true);
+      expect(mockBot.safeEditMessage).toHaveBeenCalledWith(
+        123,
+        456,
+        expect.stringContaining('✅ *Settings Updated*')
+      );
+
+      const callArgs = mockBot.safeEditMessage.mock.calls[0];
+      expect(callArgs[2]).toContain('Voice Auto Send: **Enabled**');
+      expect(callArgs[2]).toContain('sent to AI automatically without confirmation');
+    });
+
+    test('should handle disable instant callback', async () => {
+      await settingsHandler.handleSettingsCallback('settings:voice_instant:disable', 123, 456);
+
+      expect(mockVoiceHandler.setVoiceTranscriptionInstant).toHaveBeenCalledWith(false);
+      expect(mockBot.safeEditMessage).toHaveBeenCalledWith(
+        123,
+        456,
+        expect.stringContaining('✅ *Settings Updated*')
+      );
+
+      const callArgs = mockBot.safeEditMessage.mock.calls[0];
+      expect(callArgs[2]).toContain('Voice Auto Send: **Disabled**');
+      expect(callArgs[2]).toContain('show confirmation buttons before sending');
+    });
+
+    test('should handle bot config write error', async () => {
+      // Mock voice handler to throw error
+      mockVoiceHandler.setVoiceTranscriptionInstant.mockImplementation(() => {
+        throw new Error('Write permission denied');
+      });
+
+      await settingsHandler.handleSettingsCallback('settings:voice_instant:enable', 123, 456);
+
+      expect(mockBot.safeEditMessage).toHaveBeenCalledWith(
+        123,
+        456,
+        expect.stringContaining('❌ *Settings Error*')
+      );
+
+      const callArgs = mockBot.safeEditMessage.mock.calls[0];
+      expect(callArgs[2]).toContain('Failed to update Voice Auto Send setting');
+    });
+
+    test('should get instant setting from voice handler', () => {
+      mockVoiceHandler.getVoiceTranscriptionInstant.mockReturnValue(true);
+
+      const result = settingsHandler.getVoiceTranscriptionInstant();
+      expect(result).toBe(true);
+      expect(mockVoiceHandler.getVoiceTranscriptionInstant).toHaveBeenCalled();
+    });
+
+    test('should delegate to voice handler when config fails', () => {
+      mockVoiceHandler.getVoiceTranscriptionInstant.mockReturnValue(false);
+
+      const result = settingsHandler.getVoiceTranscriptionInstant();
+      expect(result).toBe(false);
+      expect(mockVoiceHandler.getVoiceTranscriptionInstant).toHaveBeenCalled();
+    });
+  });
 });

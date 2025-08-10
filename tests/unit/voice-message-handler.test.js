@@ -6,6 +6,7 @@
 const VoiceMessageHandler = require('../../VoiceMessageHandler');
 const axios = require('axios');
 const FormData = require('form-data');
+const fs = require('fs');
 
 // Mock dependencies
 jest.mock('axios');
@@ -758,6 +759,142 @@ describe('VoiceMessageHandler', () => {
         456,
         expect.stringContaining('Test Mode'),
         expect.any(Object)
+      );
+    });
+  });
+
+  describe('Voice Transcription Instant Mode', () => {
+    beforeEach(() => {
+      // Mock successful file download and transcription (same as other tests)
+      mockAxios.get.mockResolvedValue({
+        data: Buffer.from('mock-audio-data')
+      });
+      mockAxios.post.mockResolvedValue({
+        data: { text: 'Hello Claude, help me with coding' }
+      });
+
+      // Mock the bot config file system
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filepath) => {
+        if (filepath === './configs/bot1.json') {
+          return JSON.stringify({ 
+            voiceTranscriptionMethod: 'nexara',
+            voiceTranscriptionInstant: false 
+          });
+        }
+        return '{}';
+      });
+    });
+
+    test('should use normal confirmation mode when instant is disabled', async () => {
+      const voiceMsg = createMockVoiceMessage();
+      
+      await voiceHandler.handleVoiceMessage(voiceMsg);
+
+      // Should send confirmation message with buttons
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        456,
+        expect.stringContaining('Execute this command?'),
+        expect.objectContaining({
+          reply_markup: expect.objectContaining({
+            inline_keyboard: expect.arrayContaining([
+              expect.arrayContaining([
+                expect.objectContaining({ text: '✅ OK' }),
+                expect.objectContaining({ text: '❌ Cancel' })
+              ])
+            ])
+          })
+        })
+      );
+    });
+
+    test('should execute immediately when instant mode is enabled', async () => {
+      // Mock instant mode enabled
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filepath) => {
+        if (filepath === './configs/bot1.json') {
+          return JSON.stringify({ 
+            voiceTranscriptionMethod: 'nexara',
+            voiceTranscriptionInstant: true 
+          });
+        }
+        return '{}';
+      });
+
+      // Mock the main bot processUserMessage method
+      mockMainBot.processUserMessage = jest.fn();
+
+      const voiceMsg = createMockVoiceMessage();
+      
+      await voiceHandler.handleVoiceMessage(voiceMsg);
+
+      // Should send instant processing message (not confirmation)
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        456,
+        expect.stringContaining('⚡ **Instant Mode:** Sending to Claude...')
+      );
+
+      // Should execute the command immediately
+      expect(mockMainBot.processUserMessage).toHaveBeenCalledWith(
+        'Voice Message Transcribe: Hello Claude, help me with coding',
+        789,
+        456
+      );
+
+      // Should NOT store pending command since it executes immediately
+      expect(voiceHandler.pendingCommands.size).toBe(0);
+    });
+
+    test('should get instant setting from bot config', () => {
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filepath) => {
+        if (filepath === './configs/bot1.json') {
+          return JSON.stringify({ voiceTranscriptionInstant: true });
+        }
+        return '{}';
+      });
+
+      const result = voiceHandler.getVoiceTranscriptionInstant();
+      expect(result).toBe(true);
+    });
+
+    test('should default to false if bot config read fails', () => {
+      jest.spyOn(fs, 'readFileSync').mockImplementation(() => {
+        throw new Error('File not found');
+      });
+
+      const result = voiceHandler.getVoiceTranscriptionInstant();
+      expect(result).toBe(false);
+    });
+
+    test('should handle instant mode with concat buffer', async () => {
+      // Enable instant mode
+      jest.spyOn(fs, 'readFileSync').mockImplementation((filepath) => {
+        if (filepath === './configs/bot1.json') {
+          return JSON.stringify({ 
+            voiceTranscriptionMethod: 'nexara',
+            voiceTranscriptionInstant: true 
+          });
+        }
+        return '{}';
+      });
+
+      // Mock concat mode enabled
+      mockMainBot.getConcatModeStatus.mockReturnValue(true);
+      mockMainBot.addToMessageBuffer.mockResolvedValue(1);
+
+      const voiceMsg = createMockVoiceMessage();
+      
+      await voiceHandler.handleVoiceMessage(voiceMsg);
+
+      // Should add to buffer instead of processing immediately
+      expect(mockMainBot.addToMessageBuffer).toHaveBeenCalledWith(789, {
+        type: 'voice',
+        content: 'Hello Claude, help me with coding',
+        imagePath: null
+      });
+
+      // Should send buffer message
+      expect(mockMainBot.safeSendMessage).toHaveBeenCalledWith(
+        456,
+        expect.stringContaining('Voice Added to Buffer')
       );
     });
   });

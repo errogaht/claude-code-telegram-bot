@@ -30,7 +30,12 @@ const createMockMainBot = () => ({
   },
   commandsHandler: {
     showCommandsMenu: jest.fn().mockResolvedValue()
-  }
+  },
+  // Concat mode functionality
+  getConcatModeStatus: jest.fn().mockReturnValue(false),
+  enableConcatMode: jest.fn().mockResolvedValue(),
+  disableConcatMode: jest.fn().mockResolvedValue(),
+  sendConcatenatedMessage: jest.fn().mockResolvedValue()
 });
 
 const createMockMessage = (text, overrides = {}) => ({
@@ -103,8 +108,33 @@ describe('KeyboardHandlers', () => {
           expect(typeof button.text).toBe('string');
         });
       });
-      // Last row should have 3 buttons (Settings, Concat, Restart)
+      // Last row should have 3 buttons (Settings, Concat, Restart) when concat mode is off
       expect(keyboard.keyboard[3]).toHaveLength(3);
+    });
+
+    test('should show concat send and cancel buttons when concat mode is enabled', () => {
+      // Mock concat mode as enabled
+      mockMainBot.getConcatModeStatus.mockReturnValue(true);
+      const keyboard = keyboardHandlers.createReplyKeyboard(456);
+
+      expect(keyboard.keyboard[3]).toEqual([
+        { text: '⚙️ Settings' },
+        { text: '📤 Concat Send' },
+        { text: '❌ Concat Cancel' },
+        { text: '🔄 Restart Bot' }
+      ]);
+    });
+
+    test('should show concat on button when concat mode is disabled', () => {
+      // Mock concat mode as disabled
+      mockMainBot.getConcatModeStatus.mockReturnValue(false);
+      const keyboard = keyboardHandlers.createReplyKeyboard(456);
+
+      expect(keyboard.keyboard[3]).toEqual([
+        { text: '⚙️ Settings' },
+        { text: '🔗 Concat On' },
+        { text: '🔄 Restart Bot' }
+      ]);
     });
   });
 
@@ -211,6 +241,42 @@ describe('KeyboardHandlers', () => {
 
       expect(result).toBe(true);
       expect(mockMainBot.gitManager.showGitOverview).toHaveBeenCalledWith(123);
+    });
+
+    test('should handle Concat On button', async () => {
+      const msg = createMockMessage('🔗 Concat On');
+
+      const result = await keyboardHandlers.handleKeyboardButton(msg);
+
+      expect(result).toBe(true);
+      expect(mockMainBot.enableConcatMode).toHaveBeenCalledWith(456, 123);
+    });
+
+    test('should handle Concat Cancel button', async () => {
+      const msg = createMockMessage('❌ Concat Cancel');
+
+      const result = await keyboardHandlers.handleKeyboardButton(msg);
+
+      expect(result).toBe(true);
+      expect(mockMainBot.disableConcatMode).toHaveBeenCalledWith(456, 123, true);
+    });
+
+    test('should handle Concat Send button', async () => {
+      const msg = createMockMessage('📤 Concat Send');
+
+      const result = await keyboardHandlers.handleKeyboardButton(msg);
+
+      expect(result).toBe(true);
+      expect(mockMainBot.sendConcatenatedMessage).toHaveBeenCalledWith(456, 123);
+    });
+
+    test('should handle Concat Send button with count', async () => {
+      const msg = createMockMessage('📤 Concat Send (3)');
+
+      const result = await keyboardHandlers.handleKeyboardButton(msg);
+
+      expect(result).toBe(true);
+      expect(mockMainBot.sendConcatenatedMessage).toHaveBeenCalledWith(456, 123);
     });
 
     test('should return false for unknown button', async () => {

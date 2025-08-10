@@ -60,7 +60,7 @@ class StreamTelegramBot {
     this.gitManager = new GitManager(this.bot, this.options, this.keyboardHandlers, this);
     
     // Voice message handler
-    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this);
+    this.voiceHandler = new VoiceMessageHandler(this.bot, this.options.nexaraApiKey, this.activityIndicator, this, this.configFilePath);
     
     // Settings menu handler
     this.settingsHandler = new SettingsMenuHandler(this, this.voiceHandler);
@@ -151,18 +151,24 @@ class StreamTelegramBot {
         if (msg.text && !msg.text.startsWith('/')) {
           console.log(`[TEXT_MESSAGE] User ${userId} (@${username}) sent text: "${msg.text.substring(0, 100)}${msg.text.length > 100 ? '...' : ''}" in chat ${chatId}`);
           
+          console.log('[DEBUG] Checking keyboard button handler...');
           // Check if it's a keyboard button press
           if (await this.keyboardHandlers.handleKeyboardButton(msg)) {
+            console.log('[DEBUG] Keyboard button handler processed the message');
             return; // Button handled, don't process as regular message
           }
 
+          console.log('[DEBUG] Checking commands handler...');
           // Check if CommandsHandler needs to handle this text input (command arguments)
           if (await this.commandsHandler.handleTextMessage(msg)) {
+            console.log('[DEBUG] Commands handler processed the message');
             return; // CommandsHandler handled the text input
           }
 
+          console.log('[DEBUG] Checking git manager...');
           // Check if GitManager needs to handle this text input (e.g., branch creation)
           if (await this.gitManager.handleTextInput(chatId, msg.text)) {
+            console.log('[DEBUG] Git manager processed the message');
             return; // GitManager handled the text input
           }
 
@@ -990,9 +996,21 @@ class StreamTelegramBot {
           `💬 **Issue:** ${parsedError.message}\n` +
           `🔧 **Code:** ${parsedError.code}\n\n` +
           '💡 This usually means there\'s invalid formatting in the message.';
+        
+        // Try to convert markdown to HTML to avoid formatting errors
+        let finalMessage;
+        try {
+          const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+          const converter = new MarkdownHtmlConverter();
+          finalMessage = converter.convert(userMessage);
+        } catch (conversionError) {
+          // If conversion fails, fall back to plain text
+          console.error('[SafeSendMessage] Error message conversion failed:', conversionError.message);
+          finalMessage = 'Message Error: ' + parsedError.message + ' (Code: ' + parsedError.code + ')';
+        }
           
-        return await this.bot.sendMessage(chatId, userMessage, {
-          parse_mode: 'HTML',
+        return await this.bot.sendMessage(chatId, finalMessage, {
+          parse_mode: finalMessage.includes('<') ? 'HTML' : undefined,
           disable_notification: true
         });
       } catch (fallbackError) {
@@ -1040,11 +1058,23 @@ class StreamTelegramBot {
           `💬 **Issue:** ${parsedError.message}\n` +
           `🔧 **Code:** ${parsedError.code}\n\n` +
           '💡 This usually means there\'s invalid formatting in the message.';
+        
+        // Try to convert markdown to HTML to avoid formatting errors
+        let finalMessage;
+        try {
+          const MarkdownHtmlConverter = require('./utils/markdown-html-converter');
+          const converter = new MarkdownHtmlConverter();
+          finalMessage = converter.convert(userMessage);
+        } catch (conversionError) {
+          // If conversion fails, fall back to plain text
+          console.error('[SafeEditMessage] Error message conversion failed:', conversionError.message);
+          finalMessage = 'Edit Error: ' + parsedError.message + ' (Code: ' + parsedError.code + ')';
+        }
           
-        await this.bot.editMessageText(userMessage, {
+        await this.bot.editMessageText(finalMessage, {
           chat_id: chatId,
           message_id: messageId,
-          parse_mode: 'HTML'
+          parse_mode: finalMessage.includes('<') ? 'HTML' : undefined
         });
       } catch (fallbackError) {
         // If even the error message fails, try minimal text
@@ -1438,9 +1468,14 @@ class StreamTelegramBot {
     const thinkingMode = this.getThinkingModeById(userThinkingMode);
     
     // Append thinking phrase if not auto mode (same as claudia logic)
+    // Skip thinking mode for slash commands to avoid breaking them
     if (thinkingMode && thinkingMode.phrase) {
-      finalText = `${finalText}.\n\n${thinkingMode.phrase}.`;
-      console.log(`[User ${userId}] Applied thinking mode: ${thinkingMode.name} (${thinkingMode.phrase})`);
+      if (finalText.startsWith('/')) {
+        console.log(`[User ${userId}] Skipped thinking mode for slash command: ${finalText}`);
+      } else {
+        finalText = `${finalText}.\n\n${thinkingMode.phrase}.`;
+        console.log(`[User ${userId}] Applied thinking mode: ${thinkingMode.name} (${thinkingMode.phrase})`);
+      }
     }
     
     console.log(`[ProcessUserMessage] Final text to send to Claude: "${finalText}"`);

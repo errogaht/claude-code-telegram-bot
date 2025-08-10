@@ -678,14 +678,17 @@ class SessionManager {
       }
       
       if (displayTokens.transactionCount > 0) {
-        // Calculate core tokens (excluding cache for context limit)
-        const coreTokens = displayTokens.totalInputTokens + displayTokens.totalOutputTokens - displayTokens.cacheReadTokens;
+        // Calculate core tokens (input + output only, cache size tracked separately in Real Context)
+        const coreTokens = displayTokens.totalInputTokens + displayTokens.totalOutputTokens;
         const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
         
-        // Show cumulative context if this is a continuation
-        const contextLabel = session.isContinuation ? 'Total Context' : 'Context';
-        text += `🎯 **${contextLabel}:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
-        text += `   ↳ ${displayTokens.totalInputTokens - displayTokens.cacheReadTokens} in, ${displayTokens.totalOutputTokens} out\n`;
+        // Always calculate real context usage including tool results and dynamic system overhead
+        const toolResultsTokens = await this.calculateToolResultsSize(sessionId);
+        const systemOverhead = await this.calculateSystemOverhead(sessionId, session.workingDirectory);
+        const realContextUsage = coreTokens + toolResultsTokens + systemOverhead;
+        const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
+        text += `🎯 **Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n`;
+        text += `   ↳ ${displayTokens.totalInputTokens} in, ${displayTokens.totalOutputTokens} out\n`;
         text += `   ↳ ${displayTokens.transactionCount} transaction${displayTokens.transactionCount > 1 ? 's' : ''}\n`;
         
         if (session.isContinuation) {
@@ -694,30 +697,24 @@ class SessionManager {
           text += `   ↳ 📝 Current session: ${(currentTokens.totalInputTokens + currentTokens.totalOutputTokens).toLocaleString()} tokens\n`;
         }
         
-        // Calculate and show tool results size
-        const toolResultsTokens = await this.calculateToolResultsSize(sessionId);
+        // Show tool results size if present
         if (toolResultsTokens > 0) {
           text += `🔧 **Tool Results:** ${toolResultsTokens.toLocaleString()} tokens\n`;
-          
-          // Recalculate real context usage including tool results
-          const realContextUsage = coreTokens + toolResultsTokens;
-          const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
-          text += `📊 **Real Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n`;
-          
-          // Update warning threshold based on real usage
-          if (realUsagePercentage > 80) {
-            text += '⚠️ **High tool results accumulation - consider /compact**\n';
-          }
-        } else {
-          // Warning when approaching limit (original logic)
-          if (usagePercentage > 80) {
-            text += '⚠️ **Close to limit - consider /compact soon**\n';
-          }
+        }
+        
+        // Warning when approaching limit based on real usage
+        if (realUsagePercentage > 80) {
+          text += '⚠️ **Close to limit - consider /compact soon**\n';
         }
         
         text += '\n';
       } else {
-        text += `🎯 **Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
+        // Always calculate real context usage even when no tokens
+        const toolResultsTokens = await this.calculateToolResultsSize(sessionId);
+        const systemOverhead = await this.calculateSystemOverhead(sessionId, session.workingDirectory);
+        const realContextUsage = toolResultsTokens + systemOverhead;
+        const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
+        text += `🎯 **Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n\n`;
       }
       
       // Activity and health status
@@ -743,23 +740,32 @@ class SessionManager {
       }
       
       if (cumulativeTokens && cumulativeTokens.transactionCount > 0) {
-        // Calculate core tokens (excluding cache for context limit)
-        const coreTokens = cumulativeTokens.totalInputTokens + cumulativeTokens.totalOutputTokens - cumulativeTokens.cacheReadTokens;
+        // Calculate core tokens (input + output only, cache size tracked separately in Real Context)
+        const coreTokens = cumulativeTokens.totalInputTokens + cumulativeTokens.totalOutputTokens;
         const usagePercentage = ((coreTokens / contextLimit) * 100).toFixed(1);
         
-        text += `🎯 **Total Context:** ${coreTokens.toLocaleString()} / ${contextLimit.toLocaleString()} (${usagePercentage}%)\n`;
-        text += `   ↳ ${cumulativeTokens.totalInputTokens - cumulativeTokens.cacheReadTokens} in, ${cumulativeTokens.totalOutputTokens} out\n`;
+        // Calculate real context usage for stored session
+        const systemOverhead = await this.calculateSystemOverhead(storedSessionId, this.options.workingDirectory);
+        const realContextUsage = coreTokens + systemOverhead;
+        const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
+        
+        text += `🎯 **Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n`;
+        text += `   ↳ ${cumulativeTokens.totalInputTokens} in, ${cumulativeTokens.totalOutputTokens} out\n`;
         text += `   ↳ ${cumulativeTokens.transactionCount} transaction${cumulativeTokens.transactionCount > 1 ? 's' : ''}\n`;
         text += '   ↳ 🔗 Includes all parent sessions in chain\n';
         
-        // Warning when approaching limit
-        if (usagePercentage > 80) {
+        // Warning when approaching limit based on real usage
+        if (realUsagePercentage > 80) {
           text += '⚠️ **Close to limit - consider /compact soon**\n';
         }
         
         text += '\n';
       } else {
-        text += `🎯 **Total Context:** 0 / ${contextLimit.toLocaleString()} (0.0%)\n\n`;
+        // Calculate real context usage even when no cumulative tokens
+        const systemOverhead = await this.calculateSystemOverhead(storedSessionId, this.options.workingDirectory);
+        const realContextUsage = systemOverhead;
+        const realUsagePercentage = ((realContextUsage / contextLimit) * 100).toFixed(1);
+        text += `🎯 **Context:** ${realContextUsage.toLocaleString()} / ${contextLimit.toLocaleString()} (${realUsagePercentage}%)\n\n`;
       }
       
       text += '💡 **Send a message to resume this session**\n';
@@ -1234,9 +1240,9 @@ class SessionManager {
       // Only return token usage if we found some data
       if (transactionCount > 0) {
         return {
-          totalInputTokens: totalInputTokens + cacheReadTokens,
+          totalInputTokens,
           totalOutputTokens,
-          totalTokens: totalInputTokens + totalOutputTokens + cacheReadTokens,
+          totalTokens: totalInputTokens + totalOutputTokens,
           transactionCount,
           cacheReadTokens,
           cacheCreationTokens
@@ -1249,6 +1255,87 @@ class SessionManager {
       // Session file not found or other error
       console.error(`[SessionManager] Error reading session tokens for ${sessionId}:`, error.message);
       return null;
+    }
+  }
+
+  /**
+   * Calculate system overhead tokens (CLAUDE.md, active cache, system prompts)
+   */
+  async calculateSystemOverhead(sessionId, workingDirectory) {
+    try {
+      let totalOverhead = 0;
+      
+      // 1. Calculate CLAUDE.md size
+      const fs = require('fs');
+      const path = require('path');
+      
+      // Check for CLAUDE.md in working directory
+      if (workingDirectory && fs.existsSync(workingDirectory)) {
+        const claudeMdPath = path.join(workingDirectory, 'CLAUDE.md');
+        if (fs.existsSync(claudeMdPath)) {
+          const stats = fs.statSync(claudeMdPath);
+          const claudeMdTokens = Math.ceil(stats.size / 4); // Rough estimate: 4 chars per token
+          totalOverhead += claudeMdTokens;
+          console.log(`[SystemOverhead] CLAUDE.md: ${claudeMdTokens} tokens`);
+        }
+      }
+      
+      // 2. Active cache is already included in context, don't double-count
+      // const activeCacheTokens = await this.getActiveCacheSize(sessionId);
+      // totalOverhead += activeCacheTokens;
+      
+      // 3. System prompts and metadata (Claude Code system prompts, env info, etc)
+      const systemPromptsTokens = 15000; // Estimated based on Claude Code system prompts
+      totalOverhead += systemPromptsTokens;
+      
+      console.log(`[SystemOverhead] Total: ${totalOverhead} tokens (CLAUDE.md: ${totalOverhead - systemPromptsTokens}, system: ${systemPromptsTokens})`);
+      return totalOverhead;
+      
+    } catch (error) {
+      console.error('[SystemOverhead] Error calculating overhead:', error.message);
+      return 15000; // Fallback to system prompts only
+    }
+  }
+
+  /**
+   * Get active cache size from the most recent request in session
+   */
+  async getActiveCacheSize(sessionId) {
+    try {
+      const sessionFile = this.getSessionFilePath(sessionId);
+      if (!require('fs').existsSync(sessionFile)) {
+        return 0;
+      }
+
+      const content = require('fs').readFileSync(sessionFile, 'utf8');
+      const lines = content.split('\n').filter(line => line.trim());
+      
+      // Find the last entry with usage data
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const data = JSON.parse(lines[i]);
+          let usage = null;
+          
+          if (data.type === 'assistant' && data.message && data.message.usage) {
+            usage = data.message.usage;
+          } else if (data.usage) {
+            usage = data.usage;
+          }
+          
+          if (usage && usage.cache_read_input_tokens) {
+            const cacheSize = usage.cache_read_input_tokens;
+            console.log(`[SystemOverhead] Active cache: ${cacheSize} tokens`);
+            return cacheSize;
+          }
+        } catch (parseError) {
+          continue;
+        }
+      }
+      
+      return 0;
+    } catch (error) {
+      console.error('[SystemOverhead] Error getting active cache size:', error.message);
+      return 0;
     }
   }
 
@@ -1704,7 +1791,7 @@ class SessionManager {
         console.log(`[User ${session.userId}] Estimated tokens from cost $${cost}: ${estimatedInputTokens} in, ${estimatedOutputTokens} out`);
       }
 
-      session.tokenUsage.totalInputTokens += estimatedInputTokens + cacheReadTokens;
+      session.tokenUsage.totalInputTokens += estimatedInputTokens;
       session.tokenUsage.totalOutputTokens += estimatedOutputTokens;
       session.tokenUsage.cacheReadTokens += cacheReadTokens;
       session.tokenUsage.cacheCreationTokens += cacheCreationTokens;
@@ -1771,16 +1858,21 @@ class SessionManager {
         return;
       }
       
-      // Calculate core tokens (excluding cache for context limit)
-      const coreTokens = tokens.totalInputTokens + tokens.totalOutputTokens - tokens.cacheReadTokens;
+      // Calculate real context including dynamic system overhead (CLAUDE.md, system prompts, active cache)
+      const coreTokens = tokens.totalInputTokens + tokens.totalOutputTokens;
+      const systemOverhead = await this.calculateSystemOverhead(session.sessionId, session.workingDirectory);
+      const toolResultsTokens = await this.calculateToolResultsSize(session.sessionId);
+      const realContextTokens = coreTokens + systemOverhead + toolResultsTokens;
+      
       const contextLimit = this.getContextWindowLimit(this.options.model);
-      const usagePercentage = (coreTokens / contextLimit) * 100;
+      const coreUsagePercentage = (coreTokens / contextLimit) * 100;
+      const realUsagePercentage = (realContextTokens / contextLimit) * 100;
       
-      console.log(`[User ${session.userId}] Context usage: ${coreTokens}/${contextLimit} (${usagePercentage.toFixed(1)}%)`);
+      console.log(`[User ${session.userId}] Context usage: ${coreTokens}/${contextLimit} (${coreUsagePercentage.toFixed(1)}%) | Real: ${realContextTokens}/${contextLimit} (${realUsagePercentage.toFixed(1)}%)`);
       
-      // Trigger auto-compact if less than 5% remaining (95% used)
-      if (usagePercentage >= 95) {
-        console.log(`[User ${session.userId}] Auto-compact triggered at ${usagePercentage.toFixed(1)}% usage`);
+      // Trigger auto-compact based on REAL context usage if less than 5% remaining (95% used)
+      if (realUsagePercentage >= 95) {
+        console.log(`[User ${session.userId}] Auto-compact triggered at ${realUsagePercentage.toFixed(1)}% real usage`);
         session.autoCompactInProgress = true;
         await this.performAutoCompact(session, chatId);
       }

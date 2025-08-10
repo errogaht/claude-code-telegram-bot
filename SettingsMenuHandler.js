@@ -21,6 +21,9 @@ class SettingsMenuHandler {
           { text: '🎤 Voice Transcription Method', callback_data: 'settings:voice_transcription' }
         ],
         [
+          { text: '🚀 Voice Auto Send', callback_data: 'settings:voice_instant' }
+        ],
+        [
           { text: '🔙 Back to Main Menu', callback_data: 'settings:close' }
         ]
       ]
@@ -79,6 +82,62 @@ class SettingsMenuHandler {
   }
 
   /**
+   * Get voice transcription instant setting from bot config (delegate to VoiceHandler)
+   */
+  getVoiceTranscriptionInstant() {
+    return this.voiceHandler.getVoiceTranscriptionInstant();
+  }
+
+  /**
+   * Set voice transcription instant setting in bot config (delegate to VoiceHandler)
+   */
+  setVoiceTranscriptionInstant(enabled) {
+    return this.voiceHandler.setVoiceTranscriptionInstant(enabled);
+  }
+
+  /**
+   * Show voice transcription instant settings
+   */
+  async showVoiceTranscriptionInstantSettings(chatId, messageId = null) {
+    const isEnabled = this.getVoiceTranscriptionInstant();
+    
+    const keyboard = {
+      inline_keyboard: [
+        [
+          { 
+            text: isEnabled ? '✅ Enabled (Current)' : '✅ Enable',
+            callback_data: 'settings:voice_instant:enable'
+          }
+        ],
+        [
+          { 
+            text: isEnabled ? '❌ Disable' : '❌ Disabled (Current)',
+            callback_data: 'settings:voice_instant:disable'
+          }
+        ],
+        [
+          { text: '🔙 Back to Settings', callback_data: 'settings:back' }
+        ]
+      ]
+    };
+
+    const message = '🚀 *Voice Auto Send*\n\n' +
+                   `Current status: **${isEnabled ? 'Enabled' : 'Disabled'}**\n\n` +
+                   '**When enabled:**\n' +
+                   '• Voice messages are sent to AI automatically\n' +
+                   '• No confirmation buttons (OK/Cancel) are shown\n\n' +
+                   '**When disabled:**\n' +
+                   '• Voice messages show confirmation buttons\n' +
+                   '• You can review transcription before sending';
+
+    if (messageId) {
+      await this.bot.safeEditMessage(chatId, messageId, message, { reply_markup: keyboard });
+    } else {
+      await this.bot.safeSendMessage(chatId, message, { reply_markup: keyboard });
+    }
+  }
+
+  /**
    * Handle settings callbacks
    */
   async handleSettingsCallback(callbackData, chatId, messageId) {
@@ -91,6 +150,11 @@ class SettingsMenuHandler {
 
       if (callbackData === 'settings:voice_transcription') {
         await this.showVoiceTranscriptionSettings(chatId, messageId);
+        return true;
+      }
+
+      if (callbackData === 'settings:voice_instant') {
+        await this.showVoiceTranscriptionInstantSettings(chatId, messageId);
         return true;
       }
 
@@ -109,6 +173,30 @@ class SettingsMenuHandler {
           await this.bot.safeEditMessage(chatId, messageId,
             '❌ *Settings Error*\n\n' +
               `Failed to update transcription method: ${error.message}`
+          );
+        }
+        return true;
+      }
+
+      if (callbackData.startsWith('settings:voice_instant:')) {
+        const action = callbackData.replace('settings:voice_instant:', '');
+        const enabled = action === 'enable';
+        
+        try {
+          this.setVoiceTranscriptionInstant(enabled);
+          
+          await this.bot.safeEditMessage(chatId, messageId,
+            '✅ *Settings Updated*\n\n' +
+              `Voice Auto Send: **${enabled ? 'Enabled' : 'Disabled'}**\n\n` +
+              (enabled ? 
+                '🚀 Voice messages will now be sent to AI automatically without confirmation.' :
+                '⏸️ Voice messages will now show confirmation buttons before sending.'
+              )
+          );
+        } catch (error) {
+          await this.bot.safeEditMessage(chatId, messageId,
+            '❌ *Settings Error*\n\n' +
+              `Failed to update Voice Auto Send setting: ${error.message}`
           );
         }
         return true;

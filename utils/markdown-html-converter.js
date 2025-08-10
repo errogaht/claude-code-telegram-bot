@@ -13,9 +13,13 @@ class MarkdownHtmlConverter {
     let blockQuoteIndex = 0;
     
     // 1. Extract and protect code blocks first
-    let formatted = text.replace(/```(?:[a-zA-Z]*\n)?([\s\S]*?)```/g, (match, code) => {
+    let formatted = text.replace(/```(?:([a-zA-Z]+)\n)?([\s\S]*?)```/g, (match, language, code) => {
       const placeholder = `!!!CODE_BLOCK_${codeBlockIndex}!!!`;
-      codeBlocks[codeBlockIndex] = `<pre>${this.escapeHTML(code.trim())}</pre>`;
+      if (language) {
+        codeBlocks[codeBlockIndex] = `<pre><code class="language-${language}">${this.escapeHTML(code.trim())}</code></pre>`;
+      } else {
+        codeBlocks[codeBlockIndex] = `<pre>${this.escapeHTML(code.trim())}</pre>`;
+      }
       codeBlockIndex++;
       return placeholder;
     });
@@ -59,9 +63,13 @@ class MarkdownHtmlConverter {
   
   // NEW: Handle ```code blocks``` (missing from current formatter)
   convertCodeBlocks(text) {
-    return text.replace(/```(?:[a-zA-Z]*\n)?([\s\S]*?)```/g, (match, code) => {
+    return text.replace(/```(?:([a-zA-Z]+)\n)?([\s\S]*?)```/g, (match, language, code) => {
       const trimmedCode = code.trim();
-      return `<pre>${this.escapeHTML(trimmedCode)}</pre>`;
+      if (language) {
+        return `<pre><code class="language-${language}">${this.escapeHTML(trimmedCode)}</code></pre>`;
+      } else {
+        return `<pre>${this.escapeHTML(trimmedCode)}</pre>`;
+      }
     });
   }
   

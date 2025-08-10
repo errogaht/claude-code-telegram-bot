@@ -61,7 +61,18 @@ describe('MarkdownHtmlConverter', () => {
     test('should handle code blocks with language specifier', () => {
       const input = '```javascript\nconsole.log("hello");\n```';
       const result = converter.convertCodeBlocks(input);
-      expect(result).toBe('<pre>console.log("hello");</pre>');
+      expect(result).toBe('<pre><code class="language-javascript">console.log("hello");</code></pre>');
+    });
+
+    test('should handle various programming languages in code blocks', () => {
+      const phpCode = '```php\n<?php echo "Hello"; ?>\n```';
+      expect(converter.convertCodeBlocks(phpCode)).toBe('<pre><code class="language-php">&lt;?php echo "Hello"; ?&gt;</code></pre>');
+
+      const pythonCode = '```python\ndef hello():\n    print("Hello")\n```';
+      expect(converter.convertCodeBlocks(pythonCode)).toBe('<pre><code class="language-python">def hello():\n    print("Hello")</code></pre>');
+
+      const bashCode = '```bash\necho "Hello World"\n```';
+      expect(converter.convertCodeBlocks(bashCode)).toBe('<pre><code class="language-bash">echo "Hello World"</code></pre>');
     });
 
     test('should handle multiple code blocks', () => {
@@ -239,7 +250,7 @@ For more info, see [documentation](https://example.com/docs).`;
       expect(result).toContain('<b>📋 Analysis Results</b>');
       expect(result).toContain('<b>key findings</b>');
       expect(result).toContain('<code>getUserData()</code>');
-      expect(result).toContain('<pre>// Fix suggestion');
+      expect(result).toContain('<pre><code class="language-javascript">// Fix suggestion');
       expect(result).toContain('<a href="https://example.com/docs">documentation</a>');
       expect(result).toContain('• Performance issue');
       expect(result).toContain('• Security vulnerability');
@@ -264,7 +275,7 @@ For more info, see [documentation](https://example.com/docs).`;
       expect(result).toContain('<code>src/app.js</code>');
       expect(result).toContain('<i>updated configuration</i>');
       expect(result).toContain('<b>added documentation</b>');
-      expect(result).toContain('<pre>+ added new feature');
+      expect(result).toContain('<pre><code class="language-diff">+ added new feature');
     });
   });
 });

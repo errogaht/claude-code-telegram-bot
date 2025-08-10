@@ -23,6 +23,11 @@ class GitManager {
       unstagedFiles: [],
       untrackedFiles: [],
       commitInProgress: false,
+      commitMessageInProgress: false,
+      commitMessageChatId: null,
+      amendMessageInProgress: false,
+      amendMessageChatId: null,
+      lastCommitMessage: null,
       branchSwitchInProgress: false,
       branchCreationInProgress: false,
       branchCreationChatId: null
@@ -3137,8 +3142,13 @@ class GitManager {
         }
         
         // Start commit message input
+        console.log(`[GitManager DEBUG] Setting commitMessageInProgress = true for chatId ${chatId}`);
         this.gitState.commitMessageInProgress = true;
         this.gitState.commitMessageChatId = chatId;
+        console.log('[GitManager DEBUG] gitState after setting:', {
+          commitMessageInProgress: this.gitState.commitMessageInProgress,
+          commitMessageChatId: this.gitState.commitMessageChatId
+        });
         
         await this.mainBot.safeSendMessage(chatId,
           '✍️ **Enter Commit Message**\n\n' +
@@ -4709,7 +4719,16 @@ class GitManager {
    * This should be called from the bot's text message handler
    */
   async handleTextInput(chatId, text) {
+    console.log(`[GitManager DEBUG] handleTextInput called: chatId=${chatId}, text="${text}"`);
+    console.log(`[GitManager DEBUG] gitState:`, {
+      branchCreationInProgress: this.gitState.branchCreationInProgress,
+      branchCreationChatId: this.gitState.branchCreationChatId,
+      commitMessageInProgress: this.gitState.commitMessageInProgress,
+      commitMessageChatId: this.gitState.commitMessageChatId
+    });
+    
     if (this.gitState.branchCreationInProgress && this.gitState.branchCreationChatId === chatId) {
+      console.log('[GitManager DEBUG] Processing branch creation...');
       // Reset state
       this.gitState.branchCreationInProgress = false;
       this.gitState.branchCreationChatId = null;
@@ -4720,6 +4739,7 @@ class GitManager {
     }
     
     if (this.gitState.commitMessageInProgress && this.gitState.commitMessageChatId === chatId) {
+      console.log('[GitManager DEBUG] Processing commit message...');
       // Reset state
       this.gitState.commitMessageInProgress = false;
       this.gitState.commitMessageChatId = null;
@@ -4745,7 +4765,9 @@ class GitManager {
       }
       
       // Process commit creation
+      console.log('[GitManager DEBUG] Calling processCommitCreation...');
       await this.processCommitCreation(chatId, text);
+      console.log('[GitManager DEBUG] processCommitCreation completed');
       return true; // Indicate that we handled this text input
     }
     
@@ -4762,6 +4784,7 @@ class GitManager {
       return true; // Indicate that we handled this text input
     }
     
+    console.log('[GitManager DEBUG] No conditions matched, returning false');
     return false; // We didn't handle this input
   }
 
@@ -4785,8 +4808,11 @@ class GitManager {
    * Process commit creation with the provided message
    */
   async processCommitCreation(chatId, message) {
+    console.log(`[GitManager DEBUG] processCommitCreation called: chatId=${chatId}, message="${message}"`);
     try {
+      console.log('[GitManager DEBUG] Calling createCommit...');
       const result = await this.createCommit(message);
+      console.log('[GitManager DEBUG] createCommit result:', result);
       
       if (result.success) {
         // Refresh git status after successful commit

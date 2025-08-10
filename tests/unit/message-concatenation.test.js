@@ -107,6 +107,38 @@ describe('Message Concatenation Feature', () => {
       
       expect(bot.getBufferSize(userId)).toBe(1);
     });
+
+    test('should cancel concat mode and clear buffer when using concat cancel', async () => {
+      const userId = 123456;
+      const chatId = 789012;
+
+      // Enable concat mode and add messages to buffer
+      await bot.enableConcatMode(userId, chatId);
+      await bot.addToMessageBuffer(userId, {
+        type: 'text',
+        content: 'first message',
+        imagePath: null
+      });
+      await bot.addToMessageBuffer(userId, {
+        type: 'text',
+        content: 'second message',
+        imagePath: null
+      });
+
+      expect(bot.getConcatModeStatus(userId)).toBe(true);
+      expect(bot.getBufferSize(userId)).toBe(2);
+
+      // Cancel concat mode (equivalent to clicking "❌ Concat Cancel")
+      await bot.disableConcatMode(userId, chatId, true);
+      
+      expect(bot.getConcatModeStatus(userId)).toBe(false);
+      expect(bot.getBufferSize(userId)).toBe(0);
+      expect(bot.safeSendMessage).toHaveBeenCalledWith(
+        chatId,
+        expect.stringContaining('Concat Mode Disabled'),
+        expect.any(Object)
+      );
+    });
   });
 
   describe('Message Buffer Operations', () => {
@@ -419,7 +451,6 @@ describe('Message Concatenation Feature', () => {
       const user1 = 111111;
       const user2 = 222222;
       const chat1 = 333333;
-      const chat2 = 444444;
 
       await bot.enableConcatMode(user1, chat1);
       await bot.addToMessageBuffer(user1, {

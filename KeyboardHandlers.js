@@ -13,11 +13,15 @@ class KeyboardHandlers {
    * Create persistent reply keyboard with useful buttons
    */
   createReplyKeyboard(userId = null) {
-    // Determine concat button based on mode and buffer status
-    let concatButton = { text: '🔗 Concat On' };
+    // Determine concat buttons based on mode and buffer status
+    let concatButtons = [{ text: '🔗 Concat On' }];
     
     if (userId && this.mainBot.getConcatModeStatus && this.mainBot.getConcatModeStatus(userId)) {
-      concatButton = { text: '📤 Concat Send' };
+      // When concat mode is enabled, show both Send and Cancel buttons
+      concatButtons = [
+        { text: '📤 Concat Send' },
+        { text: '❌ Concat Cancel' }
+      ];
     }
 
     return {
@@ -39,7 +43,7 @@ class KeyboardHandlers {
         ],
         [
           { text: '⚙️ Settings' },
-          concatButton,
+          ...concatButtons,
           { text: '🔄 Restart Bot' }
         ]
       ],
@@ -151,6 +155,12 @@ class KeyboardHandlers {
       logKeyboardButton();
       console.log(`[COMPONENT] StreamTelegramBot.enableConcatMode - userId: ${userId}, chatId: ${chatId}`);
       await this.mainBot.enableConcatMode(userId, chatId);
+      return true;
+
+    case '❌ Concat Cancel':
+      logKeyboardButton();
+      console.log(`[COMPONENT] StreamTelegramBot.disableConcatMode - userId: ${userId}, chatId: ${chatId}`);
+      await this.mainBot.disableConcatMode(userId, chatId, true); // true = clear buffer
       return true;
         
     case '⚙️ Settings':

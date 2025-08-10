@@ -225,18 +225,15 @@ describe('Bot HTML Messaging', () => {
 
       await bot.safeSendMessage(12345, 'Test message');
 
-      // Should send structured error message in Markdown format (gets auto-converted to HTML)
-      const expectedErrorMessage = '❌ **Message Error**\n\n' +
-        '💬 **Issue:** Conversion failed\n' +
-        '🔧 **Code:** ERR_UNKNOWN\n\n' +
-        '💡 This usually means there\'s invalid formatting in the message.';
+      // Should send plain text fallback when both conversions fail
+      const expectedErrorMessage = 'Message Error: Conversion failed (Code: ERR_UNKNOWN)';
 
       expect(mockBot.sendMessage).toHaveBeenCalledWith(
         12345,
         expectedErrorMessage,
         expect.objectContaining({
           disable_notification: true,
-          parse_mode: 'HTML'
+          parse_mode: undefined
         })
       );
     });
@@ -249,10 +246,11 @@ describe('Bot HTML Messaging', () => {
       // Should be called twice: first fails, second is fallback
       expect(mockBot.sendMessage).toHaveBeenCalledTimes(2);
       
-      const expectedErrorMessage = '❌ **Message Error**\n\n' +
+      // The error message should be converted to HTML since converter is working
+      const expectedErrorMessage = '<converted>❌ **Message Error**\n\n' +
         '💬 **Issue:** Send failed\n' +
         '🔧 **Code:** ERR_UNKNOWN\n\n' +
-        '💡 This usually means there\'s invalid formatting in the message.';
+        '💡 This usually means there\'s invalid formatting in the message.</converted>';
       
       const fallbackCall = mockBot.sendMessage.mock.calls[1];
       expect(fallbackCall[1]).toBe(expectedErrorMessage);
@@ -263,16 +261,23 @@ describe('Bot HTML Messaging', () => {
     });
 
     test('should catch MessageSplitter errors and send fallback', async () => {
+      const shortMessage = 'Short test message';  
       const longMessage = 'a'.repeat(5000);
-      mockConverter.convert.mockReturnValue(longMessage);
+      
+      // Mock converter to return long message for the original message, wrapped format for error message
+      mockConverter.convert
+        .mockReturnValueOnce(longMessage)  // First call: original message becomes long
+        .mockReturnValue('<converted>❌ **Message Error**\n\n💬 **Issue:** Split failed\n🔧 **Code:** ERR_UNKNOWN\n\n💡 This usually means there\'s invalid formatting in the message.</converted>'); // Subsequent calls: error message
+      
       mockMessageSplitter.sendLongMessage.mockRejectedValue(new Error('Split failed'));
 
-      await bot.safeSendMessage(12345, 'Long message');
+      await bot.safeSendMessage(12345, shortMessage);
 
-      const expectedErrorMessage = '❌ **Message Error**\n\n' +
+      // The fallback error message should be HTML-converted Markdown
+      const expectedErrorMessage = '<converted>❌ **Message Error**\n\n' +
         '💬 **Issue:** Split failed\n' +
         '🔧 **Code:** ERR_UNKNOWN\n\n' +
-        '💡 This usually means there\'s invalid formatting in the message.';
+        '💡 This usually means there\'s invalid formatting in the message.</converted>';
 
       expect(mockBot.sendMessage).toHaveBeenCalledWith(
         12345,

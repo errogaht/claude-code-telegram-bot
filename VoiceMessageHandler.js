@@ -46,6 +46,33 @@ class VoiceMessageHandler {
   }
 
   /**
+   * Get voice transcription instant setting from bot config
+   */
+  getVoiceTranscriptionInstant() {
+    try {
+      const config = JSON.parse(fs.readFileSync(this.configFilePath, 'utf8'));
+      return config.voiceTranscriptionInstant || false;
+    } catch (error) {
+      console.warn('[VoiceHandler] Bot config read error, using default:', error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Set voice transcription instant setting in bot config
+   */
+  setVoiceTranscriptionInstant(enabled) {
+    try {
+      const config = JSON.parse(fs.readFileSync(this.configFilePath, 'utf8'));
+      config.voiceTranscriptionInstant = enabled;
+      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      console.log(`[VoiceHandler] Voice transcription instant set to: ${enabled}`);
+    } catch (error) {
+      throw new Error(`Failed to update bot config: ${error.message}`);
+    }
+  }
+
+  /**
    * Create transcription adapter based on config
    */
   createTranscriptionAdapter() {
@@ -88,35 +115,52 @@ class VoiceMessageHandler {
       // Stop typing indicator
       await this.activityIndicator.stop(chatId);
       
-      // Send confirmation message with buttons
-      const keyboard = {
-        inline_keyboard: [
-          [
-            { text: '✅ OK', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
-            { text: '❌ Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
-          ]
-        ]
-      };
+      // Check if instant mode is enabled
+      const isInstantMode = this.getVoiceTranscriptionInstant();
       
-      const confirmMsg = await this.mainBot.safeSendMessage(chatId,
-        '🎤 *Voice Message Received*\n\n' +
-        `📝 **Text:** "${transcribedText}"\n\n` +
-        `🔧 **Method:** ${adapter.getName()}\n\n` +
-        '❓ Execute this command?',
-        {
-          reply_markup: keyboard
-        }
-      );
-      
-      // Store pending command with new message ID (with safety check)
-      if (confirmMsg && confirmMsg.message_id) {
-        this.pendingCommands.set(confirmMsg.message_id, {
-          transcribedText,
-          userId,
-          chatId
-        });
+      if (isInstantMode) {
+        // Instant mode: execute directly without confirmation
+        await this.mainBot.safeSendMessage(chatId,
+          '🎤 *Voice Message Processed*\n\n' +
+          `📝 **Text:** "${transcribedText}"\n\n` +
+          `🔧 **Method:** ${adapter.getName()}\n\n` +
+          '⚡ **Instant Mode:** Sending to Claude...'
+        );
+        
+        // Execute immediately
+        await this.executeVoiceCommand(transcribedText, userId, chatId);
+        
       } else {
-        console.error('[Voice] Warning: confirmMsg or message_id is undefined, cannot store pending command');
+        // Normal mode: show confirmation buttons
+        const keyboard = {
+          inline_keyboard: [
+            [
+              { text: '✅ OK', callback_data: `voice_confirm:${chatId}_${Date.now()}` },
+              { text: '❌ Cancel', callback_data: `voice_cancel:${chatId}_${Date.now()}` }
+            ]
+          ]
+        };
+        
+        const confirmMsg = await this.mainBot.safeSendMessage(chatId,
+          '🎤 *Voice Message Received*\n\n' +
+          `📝 **Text:** "${transcribedText}"\n\n` +
+          `🔧 **Method:** ${adapter.getName()}\n\n` +
+          '❓ Execute this command?',
+          {
+            reply_markup: keyboard
+          }
+        );
+        
+        // Store pending command with new message ID (with safety check)
+        if (confirmMsg && confirmMsg.message_id) {
+          this.pendingCommands.set(confirmMsg.message_id, {
+            transcribedText,
+            userId,
+            chatId
+          });
+        } else {
+          console.error('[Voice] Warning: confirmMsg or message_id is undefined, cannot store pending command');
+        }
       }
       
     } catch (error) {
@@ -134,6 +178,57 @@ class VoiceMessageHandler {
         );
       } catch (sendError) {
         console.error('[Voice] Failed to send error message:', sendError);
+      }
+    }
+  }
+
+  /**
+   * Execute voice command - common logic for both instant and confirmed modes
+   */
+  async executeVoiceCommand(transcribedText, userId, chatId, processUserMessageCallback = null, messageId = null) {
+    try {
+      // Check if concat mode is enabled
+      if (this.mainBot.getConcatModeStatus(userId)) {
+        const bufferSize = await this.mainBot.addToMessageBuffer(userId, {
+          type: 'voice',
+          content: transcribedText,
+          imagePath: null
+        });
+        
+        // For instant mode, we don't have messageId to edit, so send a new message
+        if (processUserMessageCallback) {
+          await this.mainBot.safeEditMessage(chatId, messageId, 
+            `📝 **Voice Added to Buffer**\n\n🎤 Transcription: "${transcribedText}"\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`
+          );
+        } else {
+          await this.mainBot.safeSendMessage(chatId, 
+            `📝 **Voice Added to Buffer**\n\n🎤 Transcription: "${transcribedText}"\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`
+          );
+        }
+      } else {
+        // Normal processing - add voice transcription prefix like in CONCAT mode
+        const prefixedMessage = `Voice Message Transcribe: ${transcribedText}`;
+        
+        // For instant mode, we need to find the processUserMessageCallback
+        if (!processUserMessageCallback && this.mainBot.processUserMessage) {
+          await this.mainBot.processUserMessage(prefixedMessage, userId, chatId);
+        } else if (processUserMessageCallback) {
+          await processUserMessageCallback(prefixedMessage, userId, chatId);
+        } else {
+          console.error('[Voice] No way to process user message found');
+        }
+      }
+    } catch (error) {
+      console.error('[Voice] Error executing voice command:', error);
+      
+      // Send error message
+      try {
+        await this.mainBot.safeSendMessage(chatId,
+          '❌ *Voice Command Error*\n\n' +
+          `Failed to execute command: ${error.message}`
+        );
+      } catch (sendError) {
+        console.error('[Voice] Failed to send execution error message:', sendError);
       }
     }
   }
@@ -169,22 +264,8 @@ class VoiceMessageHandler {
         // Remove from pending
         this.pendingCommands.delete(messageId);
         
-        // Check if concat mode is enabled
-        if (this.mainBot.getConcatModeStatus(userId)) {
-          const bufferSize = await this.mainBot.addToMessageBuffer(userId, {
-            type: 'voice',
-            content: transcribedText,
-            imagePath: null
-          });
-          
-          await this.mainBot.safeEditMessage(chatId, messageId, 
-            `📝 **Voice Added to Buffer**\n\n🎤 Transcription: "${transcribedText}"\n\nBuffer: ${bufferSize} message${bufferSize > 1 ? 's' : ''}`
-          );
-        } else {
-          // Normal processing - add voice transcription prefix like in CONCAT mode
-          const prefixedMessage = `Voice Message Transcribe: ${transcribedText}`;
-          await processUserMessageCallback(prefixedMessage, userId, chatId);
-        }
+        // Execute the voice command
+        await this.executeVoiceCommand(transcribedText, userId, chatId, processUserMessageCallback, messageId);
         
       } else if (data.startsWith('voice_cancel:')) {
         await this.mainBot.safeEditMessage(chatId, messageId,
