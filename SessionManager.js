@@ -774,7 +774,9 @@ class SessionManager {
     const path = require('path');
     text += `📁 **Directory:** ${path.basename(this.options.workingDirectory)}\n`;
     text += `📚 **History:** ${sessionHistory.length} sessions\n`;
-    text += `🤖 **Model:** ${this.options.model}\n`;
+    
+    const actualModel = this.getUserModel(userId) || this.options.model;
+    text += `🤖 **Model:** ${actualModel}\n`;
     
     // Add thinking mode display
     const thinkingMode = this.getUserThinkingMode(userId);
