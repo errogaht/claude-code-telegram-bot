@@ -300,7 +300,88 @@ describe('VoiceMessageHandler', () => {
       mockAxios.get.mockRejectedValueOnce(new Error('Network error'));
 
       await expect(voiceHandler.downloadTelegramFile('voice/test.ogg'))
-        .rejects.toThrow('Failed to download file: Network error');
+        .rejects.toThrow('Failed to download file after 1 attempts: Network error');
+    });
+
+    test('should retry SSL connection errors up to 5 times', async () => {
+      const sslError = new Error('803829C7A9780000:error:0A0000C6:SSL routines:tls_get_more_records:packet length too long:../ssl/record/methods/tls_common.c:662:');
+      
+      // Mock 4 failures then 1 success
+      mockAxios.get
+        .mockRejectedValueOnce(sslError)
+        .mockRejectedValueOnce(sslError)
+        .mockRejectedValueOnce(sslError)
+        .mockRejectedValueOnce(sslError)
+        .mockResolvedValueOnce({ data: Buffer.from('success-data') });
+
+      const result = await voiceHandler.downloadTelegramFile('voice/test.ogg');
+
+      expect(result).toEqual(Buffer.from('success-data'));
+      expect(mockAxios.get).toHaveBeenCalledTimes(5);
+    });
+
+    test('should retry packet length too long errors', async () => {
+      const packetError = new Error('packet length too long');
+      
+      // Mock 2 failures then 1 success
+      mockAxios.get
+        .mockRejectedValueOnce(packetError)
+        .mockRejectedValueOnce(packetError)
+        .mockResolvedValueOnce({ data: Buffer.from('success-data') });
+
+      const result = await voiceHandler.downloadTelegramFile('voice/test.ogg');
+
+      expect(result).toEqual(Buffer.from('success-data'));
+      expect(mockAxios.get).toHaveBeenCalledTimes(3);
+    });
+
+    test('should retry ECONNRESET errors with exponential backoff', async () => {
+      const resetError = new Error('Connection reset');
+      resetError.code = 'ECONNRESET';
+      
+      // Mock timing to verify exponential backoff
+      const originalSetTimeout = global.setTimeout;
+      const mockSetTimeout = jest.fn((callback, _delay) => {
+        callback(); // Execute immediately for test
+        return 123; // Mock timer ID
+      });
+      global.setTimeout = mockSetTimeout;
+
+      // Mock 2 failures then 1 success
+      mockAxios.get
+        .mockRejectedValueOnce(resetError)
+        .mockRejectedValueOnce(resetError)
+        .mockResolvedValueOnce({ data: Buffer.from('success-data') });
+
+      const result = await voiceHandler.downloadTelegramFile('voice/test.ogg');
+
+      expect(result).toEqual(Buffer.from('success-data'));
+      expect(mockAxios.get).toHaveBeenCalledTimes(3);
+      expect(mockSetTimeout).toHaveBeenCalledTimes(2);
+      expect(mockSetTimeout).toHaveBeenNthCalledWith(1, expect.any(Function), 1000); // First retry: 1s
+      expect(mockSetTimeout).toHaveBeenNthCalledWith(2, expect.any(Function), 2000); // Second retry: 2s
+
+      global.setTimeout = originalSetTimeout;
+    });
+
+    test('should fail after 5 SSL error attempts', async () => {
+      const sslError = new Error('SSL routines:tls_get_more_records:packet length too long');
+      mockAxios.get.mockRejectedValue(sslError);
+
+      await expect(voiceHandler.downloadTelegramFile('voice/test.ogg'))
+        .rejects.toThrow('Failed to download file after 5 attempts: SSL routines:tls_get_more_records:packet length too long');
+
+      expect(mockAxios.get).toHaveBeenCalledTimes(5);
+    });
+
+    test('should not retry non-SSL errors', async () => {
+      const authError = new Error('Unauthorized');
+      mockAxios.get.mockRejectedValueOnce(authError);
+
+      await expect(voiceHandler.downloadTelegramFile('voice/test.ogg'))
+        .rejects.toThrow('Failed to download file after 1 attempts: Unauthorized');
+
+      expect(mockAxios.get).toHaveBeenCalledTimes(1);
     });
 
     test('should construct correct file URL', async () => {

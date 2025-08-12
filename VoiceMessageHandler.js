@@ -280,21 +280,42 @@ class VoiceMessageHandler {
   }
 
   /**
-   * Download Telegram file
+   * Download Telegram file with retry logic for SSL errors
    */
   async downloadTelegramFile(filePath) {
-    try {
-      const botToken = this.bot.token;
-      const url = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
-      
-      const response = await axios.get(url, {
-        responseType: 'arraybuffer',
-        timeout: 30000
-      });
-      
-      return Buffer.from(response.data);
-    } catch (error) {
-      throw new Error(`Failed to download file: ${error.message}`);
+    const MAX_RETRIES = 5;
+    const BASE_DELAY = 1000; // 1 second
+    
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const botToken = this.bot.token;
+        const url = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
+        
+        const response = await axios.get(url, {
+          responseType: 'arraybuffer',
+          timeout: 30000
+        });
+        
+        return Buffer.from(response.data);
+      } catch (error) {
+        const isSSLError = error.message.includes('SSL routines') || 
+                          error.message.includes('packet length too long') ||
+                          error.message.includes('tls_get_more_records') ||
+                          error.code === 'ECONNRESET' ||
+                          error.code === 'ETIMEDOUT';
+        
+        if (isSSLError && attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+          console.log(`[VoiceHandler] SSL connection error on attempt ${attempt}/${MAX_RETRIES}, retrying in ${delay}ms...`);
+          console.log(`[VoiceHandler] Error details: ${error.message}`);
+          
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // If it's not an SSL error or we've exhausted retries, throw the error
+        throw new Error(`Failed to download file after ${attempt} attempts: ${error.message}`);
+      }
     }
   }
 
