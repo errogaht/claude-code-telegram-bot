@@ -3396,11 +3396,7 @@ class GitManager {
         message += '\n';
       }
       
-      // Check upstream status
-      if (!branchInfo.hasUpstream) {
-        message += '⚠️ **No upstream branch** set for this branch.\n';
-        message += 'You can set upstream during push or manually.\n\n';
-      }
+      // Upstream is handled automatically during push
       
       // Warning for behind status
       if (branchInfo.behind > 0) {
@@ -3412,12 +3408,8 @@ class GitManager {
       
       const buttons = [];
       
-      if (prerequisites.canPush && branchInfo.ahead > 0) {
-        if (!branchInfo.hasUpstream) {
-          buttons.push([{ text: '⬆️ Push & Set Upstream', callback_data: 'git:push:execute' }]);
-        } else {
-          buttons.push([{ text: '⬆️ Push Branch', callback_data: 'git:push:execute' }]);
-        }
+      if (prerequisites.canPush && (branchInfo.ahead > 0 || !branchInfo.hasUpstream)) {
+        buttons.push([{ text: '⬆️ Push', callback_data: 'git:push:execute' }]);
       }
       
       if (branchInfo.behind > 0) {
@@ -3516,10 +3508,6 @@ class GitManager {
           message += `📈 Pushed ${result.pushedCommits} commit(s)\n`;
         } else {
           message += '📊 Everything up-to-date\n';
-        }
-        
-        if (setUpstream) {
-          message += '🔗 Upstream tracking set up\n';
         }
         
         message += '\n💡 Your changes are now available on the remote repository.';
@@ -3649,13 +3637,13 @@ class GitManager {
       
       // Check if there are commits to push
       const branchInfo = await this.getBranchInfo();
-      if (branchInfo.ahead === 0) {
+      if (branchInfo.ahead === 0 && branchInfo.hasUpstream) {
         issues.push('No commits to push');
       }
       
       // Check repository health
       const repoCheck = await this.checkGitRepository();
-      if (!repoCheck.isRepository) {
+      if (!repoCheck) {
         issues.push('Not a git repository');
       }
       
@@ -4719,8 +4707,8 @@ class GitManager {
    * This should be called from the bot's text message handler
    */
   async handleTextInput(chatId, text) {
-    console.log(`[GitManager DEBUG] handleTextInput called: chatId=${chatId}, text="${text}"`);
-    console.log(`[GitManager DEBUG] gitState:`, {
+    console.log(`[GitManager DEBUG] handleTextInput called: chatId=${chatId}, text='${text}'`);
+    console.log('[GitManager DEBUG] gitState:', {
       branchCreationInProgress: this.gitState.branchCreationInProgress,
       branchCreationChatId: this.gitState.branchCreationChatId,
       commitMessageInProgress: this.gitState.commitMessageInProgress,
@@ -5461,8 +5449,8 @@ class GitManager {
     try {
       // Check if this is a git repository
       const repoCheck = await this.checkGitRepository();
-      if (!repoCheck.isRepository) {
-        issues.push(repoCheck.error || 'Not a git repository');
+      if (!repoCheck) {
+        issues.push('Not a git repository');
       }
       
       // Check if there are staged files

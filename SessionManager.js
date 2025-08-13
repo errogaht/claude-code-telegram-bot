@@ -33,6 +33,7 @@ class SessionManager {
 
     // Use user's preferred model or default to bot's model
     const userModel = this.getUserModel(userId) || this.options.model;
+    console.log(`[SessionManager] Debug: userModel=${userModel}, getUserModel result=${this.getUserModel(userId)}, options.model=${this.options.model}, workingDir=${this.options.workingDirectory}`);
     
     const processor = new ClaudeStreamProcessor({
       model: userModel,
@@ -2213,8 +2214,9 @@ class SessionManager {
         
         console.log(`[SessionManager] Validating session ${sessionId.slice(-8)} after compact`);
         
-        // Try to resume with a simple validation message
-        const testProcess = spawn('claude', ['-r', sessionId, '--model', 'sonnet', 'echo \'validation test\''], {
+        // Try to resume with a simple validation message  
+        const userModel = this.getUserModel(this.mainBot.adminUserId) || this.options.model || 'sonnet';
+        const testProcess = spawn('claude', ['-r', sessionId, '--model', userModel, 'echo \'validation test\''], {
           cwd: this.options.workingDirectory,
           stdio: ['ignore', 'pipe', 'pipe']
         });
