@@ -172,6 +172,7 @@ PM2 process manager provides:
 - `/new` - ✨ Start new Claude Code session
 - `/sessions` - 📂 Browse previous sessions
 - `/model` - 🧠 Switch Claude model (Sonnet/Opus)
+- `/files` - 🌐 Open web-based file browser with public URL
 - `/cancel` - 🛑 Stop all running processes
 
 ### ⌨️ Persistent Keyboard
@@ -216,6 +217,15 @@ If Nexara API is configured:
 - 📱 **Mobile-optimized UI** - pagination and touch-friendly controls
 - ⚡ **Real-time status** - live git status with ahead/behind tracking
 - 🔄 **Interactive workflows** - guided git operations with error handling
+
+### 🌐 File Browser (Web Interface)
+- 📁 **Web-based file browsing** - navigate project files through a modern web interface
+- 🔗 **Public URL access** - secure ngrok tunnel provides remote access from anywhere
+- 📱 **Mobile-optimized interface** - responsive design perfect for mobile devices
+- 🎨 **Syntax highlighting** - view code files with proper syntax coloring
+- 🔒 **Security-first design** - access restricted to project directory only
+- ⚡ **Auto-lifecycle management** - server starts/stops with bot automatically
+- 💡 **Banner-free access** - automated ngrok warning bypass headers
 
 ### 🔒 Security
 - 👤 **Admin-only access** - only configured users can use the bot
@@ -350,6 +360,51 @@ The bot includes a comprehensive Git management interface accessible through Tel
 - **File view** shows real-time staging status for each file
 - **Error handling** provides helpful guidance for git issues
 - All operations include **confirmation and next steps** guidance
+
+### 🌐 Using File Browser (Web Interface)
+
+The bot includes a modern web-based file browser accessible via public URL:
+
+#### 🚀 Getting Started
+- Send `/files` command to start the file browser server
+- Bot automatically creates a secure ngrok tunnel and provides public URL
+- Click **🌐 Open File Browser** button or copy the URL to any browser
+
+#### 📱 Interface Features
+- **📁 Directory Navigation**: Click folders to navigate through your project
+- **📄 File Viewing**: Click files to view content with syntax highlighting
+- **🧭 Breadcrumb Navigation**: Quick navigation to parent directories
+- **📱 Mobile-Responsive**: Optimized for both desktop and mobile devices
+- **🔒 Secure Access**: Restricted to your project directory only
+
+#### 🛠️ Server Management
+- **🔄 Auto-Start**: Server starts automatically when using `/files` command
+- **❌ Manual Stop**: Use "Stop Server" button to shut down when not needed
+- **🔄 Refresh URL**: Get current URL or restart server if needed
+- **⚡ Auto-Cleanup**: Server automatically stops when bot shuts down
+
+#### 🌍 Remote Access Setup
+To enable remote access, you'll need an ngrok account:
+1. **Sign up** at [ngrok.com](https://ngrok.com) (free tier available)
+2. **Get your auth token** from [ngrok dashboard](https://dashboard.ngrok.com/get-started/your-authtoken)
+3. **Add token to bot config files**:
+   ```json
+   {
+     "botName": "YourBot",
+     "botToken": "...",
+     "ngrokAuthToken": "your_ngrok_token_here"
+   }
+   ```
+4. **Add to all bot configs**: `configs/bot1.json`, `configs/bot2.json`, `configs/bot3.json`, `configs/bot4.json`
+5. **Restart bots** to apply changes: `pm2 restart all`
+
+**Note**: Bot config files are git-ignored, so your ngrok token stays secure.
+
+#### 💡 Bypass Warning Banner
+To skip ngrok's browser warning, add this header to requests:
+```
+ngrok-skip-browser-warning: true
+```
 
 ## 👨‍💻 Development
 

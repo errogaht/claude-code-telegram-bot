@@ -6,7 +6,8 @@ module.exports = {
       args: 'bot1',
       cwd: '.',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN
       },
 
       autorestart: true,
@@ -25,7 +26,8 @@ module.exports = {
       args: 'bot2',
       cwd: '.',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN
       },
 
       autorestart: true,
@@ -44,7 +46,8 @@ module.exports = {
       args: 'bot3',
       cwd: '.',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN
       },
       autorestart: true,
       watch: false,
@@ -62,7 +65,8 @@ module.exports = {
       args: 'bot4',
       cwd: '.',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        NGROK_AUTHTOKEN: process.env.NGROK_AUTHTOKEN
       },
       autorestart: true,
       watch: false,

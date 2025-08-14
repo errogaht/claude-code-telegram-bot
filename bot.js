@@ -15,6 +15,7 @@ const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
 const CommandsHandler = require('./CommandsHandler');
+const FileBrowserServer = require('./FileBrowserServer');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -71,6 +72,13 @@ class StreamTelegramBot {
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
     
+    // File browser server with ngrok integration
+    const ngrokToken = this.getNgrokTokenFromConfig();
+    this.fileBrowserServer = new FileBrowserServer(this.options.workingDirectory, this.botInstanceName, ngrokToken);
+    this.fileBrowserUrl = null;
+    
+    // Auto-start file browser in background (non-blocking)
+    this.autoStartFileBrowser();
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -247,26 +255,21 @@ class StreamTelegramBot {
         '• 🛡️ Auto-skip permissions\n' +
         '• 🎯 Real-time tool execution\n' +
         '• 🧠 Thinking mode control (like Claudia)\n' +
-        '• 📸 Image analysis support with captions\n\n' +
-        '*Quick Buttons:*\n' +
+        '• 📸 Image analysis support with captions\n' +
+        '• 📁 Web-based file browser with Mini Apps\n\n' +
+        '*Main Commands:*\n' +
+        '• /menu - comprehensive main menu with all functions\n' +
+        '• /files - web-based file browser interface\n' +
+        '• /model - Claude model selection (Sonnet/Opus)\n' +
+        '• /think - thinking mode selection\n' +
+        '• /diff - git status and changes\n' +
+        '• /sessions - session history and management\n\n' +
+        '*Quick Access:*\n' +
         '• 🛑 STOP - emergency stop\n' +
         '• 📊 Status - session status\n' +
         '• 📂 Projects - project selection\n' +
-        '• 🔄 New Session - start fresh\n' +
-        '• 📝 Sessions - session history\n' +
-        '• 🤖 Model - Claude model selection\n' +
-        '• 🧠 Thinking - thinking mode selection\n' +
-        '• 📍 Path - current directory\n' +
-        '• 🔍 Git Diff - view git changes\n\n' +
-        '*Claude 4 Model Commands:*\n' +
-        '• /sonnet - Claude 4 Sonnet (recommended)\n' +
-        '• /opus - Claude 4 Opus (maximum performance)\n' +
-        '• /model - show model selection\n\n' +
-        '*Git Commands:*\n' +
-        '• /diff - view git status and diff (includes untracked files) with mobile-friendly pagination\n\n' +
-        '*Thinking Mode Commands:*\n' +
-        '• /think - select thinking mode (Auto, Think, Think Hard, Think Harder, Ultrathink)\n\n' +
-        'Just send me a message to start!';
+        '• 🔄 New Session - start fresh\n\n' +
+        '💡 Use /menu for a comprehensive interface or just send me a message to start!';
       
       await this.safeSendMessage(msg.chat.id, welcomeText, { 
         reply_markup: this.keyboardHandlers.getReplyKeyboardMarkup(userId)
@@ -343,6 +346,12 @@ class StreamTelegramBot {
           if (!handled) {
             console.log(`[COMPONENT] Commands callback not handled: "${data}", chatId: ${chatId}`);
           }
+        } else if (data.startsWith('files:')) {
+          console.log(`[COMPONENT] FileBrowserServer.handleFileBrowserCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          await this.handleFileBrowserCallback(query);
+        } else if (data.startsWith('main_menu:')) {
+          console.log(`[COMPONENT] StreamTelegramBot.handleMainMenuCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          await this.handleMainMenuCallback(data, chatId, messageId, userId);
         } else if (data.startsWith('continue_after_compact:')) {
           const [, sessionId, chatId, userId] = data.split(':');
           console.log(`[COMPONENT] SessionManager.handleContinueAfterCompact - sessionId: "${sessionId}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
@@ -498,6 +507,32 @@ class StreamTelegramBot {
       }
       
       await this.restartBot(msg.chat.id, userId);
+    });
+
+    // File browser command
+    this.bot.onText(/\/files/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /files in chat ${msg.chat.id}`);
+      
+      if (!this.checkAdminAccess(userId, msg.chat.id)) {
+        return;
+      }
+      
+      await this.handleFilesCommand(msg.chat.id);
+    });
+
+    // Main menu command
+    this.bot.onText(/\/menu/, async (msg) => {
+      const userId = msg.from.id;
+      const username = msg.from.username || 'Unknown';
+      console.log(`[SLASH_COMMAND] User ${userId} (@${username}) executed /menu in chat ${msg.chat.id}`);
+      
+      if (!this.checkAdminAccess(userId, msg.chat.id)) {
+        return;
+      }
+      
+      await this.showMainMenu(msg.chat.id);
     });
   }
 
@@ -1394,9 +1429,10 @@ class StreamTelegramBot {
       console.log(`[Admin] User ${userId} initiated bot restart`);
       
       // Send restart confirmation message
+      const fileBrowserStatus = this.fileBrowserUrl ? '\n🌐 File browser will also restart' : '';
       await this.safeSendMessage(chatId, 
         '🔄 **Bot Restart Initiated**\n\n' +
-        `⏳ Restarting ${this.botInstanceName} process...\n` +
+        `⏳ Restarting ${this.botInstanceName} process...${fileBrowserStatus}\n` +
         '🚀 Bot will be back online shortly!'
       );
       
@@ -1541,16 +1577,34 @@ class StreamTelegramBot {
    * Setup process cleanup for activity indicators
    */
   setupProcessCleanup() {
-    const cleanup = () => {
-      console.log('\n📦 Bot shutting down - cleaning up activity indicators...');
+    const cleanup = async () => {
+      console.log('\n📦 Bot shutting down - cleaning up...');
       this.activityIndicator.cleanup();
+      
+      // Stop file browser server if running
+      if (this.fileBrowserUrl) {
+        console.log('🌐 Stopping file browser server...');
+        try {
+          await this.stopFileBrowser();
+        } catch (error) {
+          console.error('Error stopping file browser:', error);
+        }
+      }
+      
       process.exit(0);
     };
 
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
-    process.on('exit', () => {
+    process.on('exit', async () => {
       this.activityIndicator.cleanup();
+      if (this.fileBrowserUrl) {
+        try {
+          await this.stopFileBrowser();
+        } catch (error) {
+          console.error('Error stopping file browser on exit:', error);
+        }
+      }
     });
   }
 
@@ -1728,6 +1782,457 @@ class StreamTelegramBot {
     
     // Process the combined message
     await this.processUserMessage(combinedMessage, userId, chatId);
+  }
+
+  /**
+   * Start file browser server with ngrok tunnel
+   */
+  async startFileBrowser() {
+    try {
+      if (this.fileBrowserUrl) {
+        return this.fileBrowserUrl; // Already running
+      }
+
+      console.log('Starting file browser server...');
+      await this.fileBrowserServer.start();
+      
+      // Get secure URL with token for external access
+      this.fileBrowserUrl = this.fileBrowserServer.getSecurePublicUrl();
+      console.log(`✅ File browser available at: ${this.fileBrowserUrl}`);
+      console.log(`🔐 URL includes security token for protected access`);
+      return this.fileBrowserUrl;
+    } catch (error) {
+      console.error('Failed to start file browser:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop file browser server and close ngrok tunnel
+   */
+  async stopFileBrowser() {
+    try {
+      if (!this.fileBrowserUrl) {
+        return; // Already stopped
+      }
+
+      console.log('Stopping file browser server...');
+      await this.fileBrowserServer.stop();
+      this.fileBrowserUrl = null;
+      console.log('✅ File browser stopped');
+    } catch (error) {
+      console.error('Failed to stop file browser:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle /files command to open file browser
+   */
+  async handleFilesCommand(chatId) {
+    try {
+      // Start file browser if not already running
+      const url = await this.startFileBrowser();
+      
+      const isLocalOnly = url.includes('localhost');
+      const accessType = isLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
+      const statusIcon = isLocalOnly ? '🏠' : '🌐';
+      const buttonText = isLocalOnly ? '🏠 Open Locally' : '🌐 Open File Browser';
+      
+      // Get secure URL with token for Mini App button
+      const secureUrl = isLocalOnly ? url : this.fileBrowserServer.getSecurePublicUrl();
+      
+      const ngrokTip = isLocalOnly ? 
+        `🔧 **Setup Remote Access:** Set NGROK_AUTHTOKEN environment variable` : 
+        `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass ngrok warning banner`;
+      
+      const message = `${statusIcon} **File Browser Available**\n\n` +
+        `📁 Browse project files at:\n${url}\n\n` +
+        `📍 **Access Type:** ${accessType}\n\n` +
+        `${ngrokTip}\n\n` +
+        `🔧 **Features:**\n` +
+        `• Navigate through project directories\n` +
+        `• View file contents with syntax highlighting\n` +
+        `• Mobile-optimized interface\n` +
+        `• Secure access (project directory only)`;
+
+      const keyboard = {
+        inline_keyboard: []
+      };
+
+      // Only add Mini App button if it's publicly accessible (not localhost)  
+      if (!isLocalOnly) {
+        keyboard.inline_keyboard.push([
+          { text: buttonText, web_app: { url: secureUrl } },
+          { text: '❌ Stop Server', callback_data: 'files:stop' }
+        ]);
+      } else {
+        keyboard.inline_keyboard.push([
+          { text: '❌ Stop Server', callback_data: 'files:stop' }
+        ]);
+      }
+
+      keyboard.inline_keyboard.push([
+        { text: '🔄 Refresh URL', callback_data: 'files:refresh' }
+      ]);
+
+      await this.safeSendMessage(chatId, message, {
+        reply_markup: keyboard,
+        parse_mode: 'Markdown'
+      });
+    } catch (error) {
+      await this.safeSendMessage(chatId, `❌ Error starting file browser: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle file browser callback queries
+   */
+  async handleFileBrowserCallback(query) {
+    const [, action] = query.data.split(':');
+    const chatId = query.message.chat.id;
+
+    try {
+      switch (action) {
+        case 'stop':
+          await this.stopFileBrowser();
+          await this.bot.editMessageText(
+            '✅ File browser server stopped',
+            {
+              chat_id: chatId,
+              message_id: query.message.message_id,
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '🔄 Restart', callback_data: 'files:start' }
+                ]]
+              }
+            }
+          );
+          break;
+
+        case 'start':
+          const url = await this.startFileBrowser();
+          const isUrlLocalOnly = url.includes('localhost');
+          const accessType = isUrlLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
+          const statusIcon = isUrlLocalOnly ? '🏠' : '🌐';
+          
+          const message = `${statusIcon} **File Browser Restarted**\n\n` +
+            `📁 Browse project files at:\n${url}\n` +
+            `📍 Access: ${accessType}\n\n` +
+            (isUrlLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
+          
+          const replyMarkup = {
+            inline_keyboard: []
+          };
+          
+          // Only add Mini App button if it's publicly accessible (not localhost)
+          if (!isUrlLocalOnly) {
+            const startSecureUrl = this.fileBrowserServer.getSecurePublicUrl();
+            replyMarkup.inline_keyboard.push([
+              { text: '🌐 Open File Browser', web_app: { url: startSecureUrl } },
+              { text: '❌ Stop Server', callback_data: 'files:stop' }
+            ]);
+          } else {
+            replyMarkup.inline_keyboard.push([
+              { text: '❌ Stop Server', callback_data: 'files:stop' }
+            ]);
+          }
+            
+          await this.bot.editMessageText(message, {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+            parse_mode: 'Markdown',
+            reply_markup: replyMarkup
+          });
+          break;
+
+        case 'refresh':
+          if (this.fileBrowserUrl) {
+            const isRefreshLocalOnly = this.fileBrowserUrl.includes('localhost');
+            const refreshAccessType = isRefreshLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
+            const refreshStatusIcon = isRefreshLocalOnly ? '🏠' : '🌐';
+            
+            const refreshMessage = `${refreshStatusIcon} **Current File Browser URL**\n\n` +
+              `📁 ${this.fileBrowserUrl}\n` +
+              `📍 Access: ${refreshAccessType}\n\n` +
+              (isRefreshLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
+            
+            const refreshReplyMarkup = {
+              inline_keyboard: []
+            };
+            
+            // Only add Mini App button if it's publicly accessible (not localhost)
+            if (!isRefreshLocalOnly) {
+              const refreshSecureUrl = this.fileBrowserServer.getSecurePublicUrl();
+              refreshReplyMarkup.inline_keyboard.push([
+                { text: '🌐 Open File Browser', web_app: { url: refreshSecureUrl } },
+                { text: '❌ Stop Server', callback_data: 'files:stop' }
+              ]);
+            } else {
+              refreshReplyMarkup.inline_keyboard.push([
+                { text: '❌ Stop Server', callback_data: 'files:stop' }
+              ]);
+            }
+              
+            await this.bot.editMessageText(refreshMessage, {
+              chat_id: chatId,
+              message_id: query.message.message_id,
+              parse_mode: 'Markdown',
+              reply_markup: refreshReplyMarkup
+            });
+          } else {
+            await this.bot.editMessageText(
+              '⚠️ File browser is not running. Start it first.',
+              {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: '🔄 Start Server', callback_data: 'files:start' }
+                  ]]
+                }
+              }
+            );
+          }
+          break;
+      }
+
+      await this.bot.answerCallbackQuery(query.id);
+    } catch (error) {
+      console.error('Error handling file browser callback:', error);
+      await this.bot.answerCallbackQuery(query.id, {
+        text: `Error: ${error.message}`,
+        show_alert: true
+      });
+    }
+  }
+
+  /**
+   * Auto-start file browser in background (non-blocking)
+   */
+  autoStartFileBrowser() {
+    // Start in background without blocking bot initialization
+    setImmediate(async () => {
+      try {
+        console.log(`[${this.botInstanceName}] Auto-starting file browser server...`);
+        this.fileBrowserUrl = await this.fileBrowserServer.start();
+        
+        if (this.fileBrowserUrl) {
+          console.log(`[${this.botInstanceName}] ✅ File browser auto-started: ${this.fileBrowserUrl}`);
+          
+          // Only send notification if ngrok public URL (not localhost)
+          const isPublicAccess = !this.fileBrowserUrl.includes('localhost');
+          if (this.adminUserId && isPublicAccess) {
+            console.log(`[${this.botInstanceName}] 📤 Public URL available, sending notification...`);
+            await this.notifyFileBrowserReady();
+          } else if (this.adminUserId && !isPublicAccess) {
+            console.log(`[${this.botInstanceName}] 🏠 Local access only, skipping auto-notification`);
+          }
+        }
+      } catch (error) {
+        console.error(`[${this.botInstanceName}] ❌ File browser auto-start failed:`, error);
+        
+        // For ngrok auth token errors, provide helpful message
+        if (error.message?.includes('authtoken') || error.message?.includes('authentication')) {
+          console.log(`[${this.botInstanceName}] 💡 Tip: Set NGROK_AUTHTOKEN environment variable for remote access`);
+        }
+      }
+    });
+  }
+
+  /**
+   * Create comprehensive main menu keyboard with all bot functions
+   */
+  createMainMenuKeyboard(isLocalOnly = false) {
+    const keyboard = {
+      inline_keyboard: []
+    };
+
+    // Row 1: Core Functions
+    const row1 = [];
+    
+    // Files button - always available (user requested this)
+    if (!isLocalOnly) {
+      const secureUrl = this.fileBrowserServer.getSecurePublicUrl();
+      if (secureUrl) {
+        row1.push({ text: '📁 Files', web_app: { url: secureUrl } });
+      } else {
+        row1.push({ text: '📁 Files', callback_data: 'main_menu:files' });
+      }
+    } else {
+      row1.push({ text: '📁 Files', callback_data: 'main_menu:files' });
+    }
+    
+    row1.push({ text: '📂 Projects', callback_data: 'main_menu:projects' });
+    row1.push({ text: '🔍 Git Status', callback_data: 'main_menu:git' });
+    keyboard.inline_keyboard.push(row1);
+
+    // Row 2: Session Management
+    const row2 = [
+      { text: '📊 Status', callback_data: 'main_menu:status' },
+      { text: '🆕 New Session', callback_data: 'main_menu:new_session' },
+      { text: '📝 Sessions', callback_data: 'main_menu:sessions' }
+    ];
+    keyboard.inline_keyboard.push(row2);
+
+    // Row 3: Configuration
+    const row3 = [
+      { text: '🤖 Model', callback_data: 'main_menu:model' },
+      { text: '🧠 Thinking', callback_data: 'main_menu:thinking' },
+      { text: '⚙️ Settings', callback_data: 'main_menu:settings' }
+    ];
+    keyboard.inline_keyboard.push(row3);
+
+    // Row 4: Utilities
+    const row4 = [
+      { text: '📍 Current Path', callback_data: 'main_menu:pwd' },
+      { text: '💬 Commands', callback_data: 'main_menu:commands' }
+    ];
+    keyboard.inline_keyboard.push(row4);
+
+    return keyboard;
+  }
+
+  /**
+   * Show main menu to user
+   */
+  async showMainMenu(chatId) {
+    try {
+      const isServerRunning = this.fileBrowserUrl && !this.fileBrowserUrl.includes('localhost');
+      const serverStatus = isServerRunning ? '🌐 Web server running' : '🏠 Local access only';
+      
+      const message = `🎯 **Main Menu**\n\n` +
+        `${serverStatus}\n` +
+        `📍 **Current Project:** ${path.basename(this.options.workingDirectory)}\n` +
+        `🤖 **Model:** ${this.getModelDisplayName(this.options.model)}\n\n` +
+        `💡 Choose an option from the menu below:`;
+
+      const keyboard = this.createMainMenuKeyboard(!isServerRunning);
+
+      await this.safeSendMessage(chatId, message, {
+        reply_markup: keyboard
+      });
+    } catch (error) {
+      console.error('[MainMenu] Error showing main menu:', error);
+      await this.safeSendMessage(chatId, `❌ Error showing main menu: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle main menu button clicks
+   */
+  async handleMainMenuCallback(data, chatId, messageId, userId) {
+    const action = data.replace('main_menu:', '');
+    
+    try {
+      switch (action) {
+        case 'files':
+          await this.handleFilesCommand(chatId);
+          break;
+        case 'projects':
+          await this.projectNavigator.showProjectSelection(chatId);
+          break;
+        case 'git':
+          await this.gitManager.showGitOverview(chatId);
+          break;
+        case 'status':
+          await this.sessionManager.showSessionStatus(chatId);
+          break;
+        case 'new_session':
+          await this.sessionManager.startNewSession(chatId);
+          break;
+        case 'sessions':
+          await this.sessionManager.showSessionHistory(chatId);
+          break;
+        case 'model':
+          await this.showModelSelection(chatId);
+          break;
+        case 'thinking':
+          await this.showThinkingModeSelection(chatId);
+          break;
+        case 'settings':
+          await this.settingsHandler.showSettingsMenu(chatId);
+          break;
+        case 'pwd':
+          await this.showCurrentDirectory(chatId, userId);
+          break;
+        case 'commands':
+          await this.commandsHandler.showCommandsMenu(chatId, messageId);
+          break;
+        default:
+          console.log(`[MainMenu] Unknown action: ${action}`);
+      }
+    } catch (error) {
+      console.error(`[MainMenu] Error handling ${action}:`, error);
+      await this.safeSendMessage(chatId, `❌ Error executing ${action}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send notification to admin when file browser is ready
+   */
+  async notifyFileBrowserReady() {
+    try {
+      console.log(`[${this.botInstanceName}] 📤 Sending file browser ready notification to admin ${this.adminUserId}`);
+      const isLocalOnly = this.fileBrowserUrl.includes('localhost');
+      const accessType = isLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
+      const statusIcon = isLocalOnly ? '🏠' : '🌐';
+      
+      const message = `${statusIcon} **${this.botInstanceName.toUpperCase()} - Web Server Ready**\n\n` +
+        `🌐 Ngrok tunnel and HTTP server started successfully!\n` +
+        `🔗 Base URL: ${this.fileBrowserUrl}\n` +
+        `📍 Access: ${accessType}\n\n` +
+        `🎯 **Available Services:**\n` +
+        `• File browser and project explorer\n` +
+        `• Future web applications and tools\n\n` +
+        `💡 Use the menu below to access all features` +
+        (isLocalOnly ? '\n\n🔧 Set NGROK_AUTHTOKEN for remote access' : '');
+
+      const messageOptions = {
+        parse_mode: 'Markdown'
+        // No inline keyboard - user wants clean notification message
+      };
+
+      await this.safeSendMessage(this.adminUserId, message, messageOptions);
+      console.log(`[${this.botInstanceName}] ✅ Web server ready notification with main menu sent successfully`);
+    } catch (error) {
+      console.error(`[${this.botInstanceName}] ❌ Error sending file browser notification:`, error);
+    }
+  }
+
+  /**
+   * Get ngrok token from bot config file
+   */
+  getNgrokTokenFromConfig() {
+    console.log(`[${this.botInstanceName}] DEBUG: getNgrokTokenFromConfig() called`);
+    console.log(`[${this.botInstanceName}] DEBUG: configFilePath = "${this.configFilePath}"`);
+    
+    if (!this.configFilePath) {
+      console.warn(`[${this.botInstanceName}] No config file path, using environment variable for ngrok token`);
+      return process.env.NGROK_AUTHTOKEN;
+    }
+    
+    try {
+      const fs = require('fs');
+      console.log(`[${this.botInstanceName}] DEBUG: Reading config file: ${this.configFilePath}`);
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      console.log(`[${this.botInstanceName}] DEBUG: Config loaded, checking for ngrokAuthToken...`);
+      const token = config.ngrokAuthToken;
+      console.log(`[${this.botInstanceName}] DEBUG: ngrokAuthToken = "${token ? '[PRESENT]' : '[NOT FOUND]'}"`);
+      
+      if (token) {
+        console.log(`[${this.botInstanceName}] ✅ Loaded ngrok token from config file`);
+        return token;
+      } else {
+        console.log(`[${this.botInstanceName}] ⚠️  No ngrok token in config, using environment variable`);
+        return process.env.NGROK_AUTHTOKEN;
+      }
+    } catch (error) {
+      console.warn(`[${this.botInstanceName}] ❌ Error reading ngrok token from config:`, error.message);
+      return process.env.NGROK_AUTHTOKEN;
+    }
   }
 }
 
