@@ -56,7 +56,7 @@ class ProjectNavigator {
   /**
    * Show project selection with inline keyboard
    */
-  async showProjectSelection(chatId) {
+  async showProjectSelection(chatId, page = 0) {
     const projects = this.getClaudeProjects();
     
     if (projects.length === 0) {
@@ -68,12 +68,19 @@ class ProjectNavigator {
       return;
     }
     
+    // Pagination settings
+    const projectsPerPage = 12;
+    const startIndex = page * projectsPerPage;
+    const endIndex = startIndex + projectsPerPage;
+    const currentPageProjects = projects.slice(startIndex, endIndex);
+    const totalPages = Math.ceil(projects.length / projectsPerPage);
+    
     // Clear old cache and create new short IDs
     this.projectCache.clear();
     this.projectCacheCounter = 0;
     
     // Create inline buttons for projects with short IDs
-    const buttons = projects.slice(0, 15).map(projectPath => {
+    const buttons = currentPageProjects.map(projectPath => {
       const projectName = path.basename(projectPath);
       const isCurrentDir = projectPath === this.options.workingDirectory;
       const buttonText = isCurrentDir ? `✅ ${projectName}` : `📁 ${projectName}`;
@@ -88,6 +95,33 @@ class ProjectNavigator {
       }];
     });
     
+    // Add pagination buttons if needed
+    if (totalPages > 1) {
+      const paginationRow = [];
+      
+      if (page > 0) {
+        paginationRow.push({
+          text: '⬅️ Previous',
+          callback_data: `setdir:page:${page - 1}`
+        });
+      }
+      
+      // Page indicator
+      paginationRow.push({
+        text: `${page + 1}/${totalPages}`,
+        callback_data: 'setdir:pageinfo'
+      });
+      
+      if (page < totalPages - 1) {
+        paginationRow.push({
+          text: 'Next ➡️',
+          callback_data: `setdir:page:${page + 1}`
+        });
+      }
+      
+      buttons.push(paginationRow);
+    }
+    
     // Add refresh button
     buttons.push([{
       text: '🔄 Refresh Projects',
@@ -96,10 +130,12 @@ class ProjectNavigator {
     
     const keyboard = { inline_keyboard: buttons };
     
+    const pageInfo = totalPages > 1 ? `\n📄 Page ${page + 1}/${totalPages}` : '';
+    
     await this.mainBot.safeSendMessage(chatId, 
       `📁 *Current Directory*\n${this.options.workingDirectory}\n\n` +
       '📋 **Select Claude Project:**\n' +
-      `(Showing ${Math.min(projects.length, 15)} projects)`,
+      `(Showing ${startIndex + 1}-${Math.min(endIndex, projects.length)} of ${projects.length} projects)${pageInfo}`,
       { reply_markup: keyboard }
     );
   }
@@ -179,6 +215,13 @@ class ProjectNavigator {
     if (dirAction === 'refresh') {
       await this.bot.deleteMessage(chatId, messageId);
       await this.showProjectSelection(chatId);
+    } else if (dirAction.startsWith('page:')) {
+      const page = parseInt(dirAction.split(':')[1]);
+      await this.bot.deleteMessage(chatId, messageId);
+      await this.showProjectSelection(chatId, page);
+    } else if (dirAction === 'pageinfo') {
+      // Do nothing for page info button
+      return;
     } else {
       await this.handleDirectoryChange(dirAction, chatId, messageId);
     }
