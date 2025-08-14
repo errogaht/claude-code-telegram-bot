@@ -4,6 +4,7 @@ const fs = require('fs').promises;
 const ngrok = require('@ngrok/ngrok');
 const net = require('net');
 const WebServerSecurity = require('./WebServerSecurity');
+const SmartPortResolver = require('./SmartPortResolver');
 
 class FileBrowserServer {
     constructor(projectRoot = process.cwd(), botInstance = 'bot1', ngrokAuthToken = null, security = null) {
@@ -19,6 +20,13 @@ class FileBrowserServer {
         
         // Use provided security system or create new one
         this.security = security || new WebServerSecurity(botInstance);
+        
+        // Smart port resolver with large random range (8000-9999)
+        this.portResolver = new SmartPortResolver({
+            minPort: 8000,
+            maxPort: 9999,
+            maxAttempts: 50
+        });
         
         this.setupRoutes();
     }
@@ -347,57 +355,10 @@ class FileBrowserServer {
 
 
     /**
-     * Check if a port is available
-     */
-    async isPortAvailable(port) {
-        return new Promise((resolve) => {
-            const server = net.createServer();
-            server.listen(port, 'localhost', (err) => {
-                if (err) {
-                    resolve(false);
-                } else {
-                    server.once('close', () => resolve(true));
-                    server.close();
-                }
-            });
-            server.on('error', () => resolve(false));
-        });
-    }
-
-    /**
-     * Find an available port starting from a base port
+     * Find an available port using SmartPortResolver
      */
     async findAvailablePort() {
-        // Use different base ports for different bot instances to minimize conflicts
-        const botPortMap = {
-            'bot1': 3847,
-            'bot2': 3848,
-            'bot3': 3849,
-            'bot4': 3850
-        };
-        
-        let startPort = botPortMap[this.botInstance] || 3847;
-        let port = startPort;
-        
-        // Try up to 100 ports from the base port
-        for (let i = 0; i < 100; i++) {
-            if (await this.isPortAvailable(port)) {
-                console.log(`[${this.botInstance}] Found available port: ${port}`);
-                return port;
-            }
-            port++;
-        }
-        
-        // If no port found in the primary range, try a completely different range
-        startPort = 4000 + Math.floor(Math.random() * 1000);
-        for (let i = 0; i < 50; i++) {
-            if (await this.isPortAvailable(startPort + i)) {
-                console.log(`[${this.botInstance}] Found available port in secondary range: ${startPort + i}`);
-                return startPort + i;
-            }
-        }
-        
-        throw new Error(`Unable to find available port for ${this.botInstance}`);
+        return await this.portResolver.findAvailablePort(`FileBrowser-${this.botInstance}`);
     }
 
     async start() {
@@ -570,6 +531,11 @@ class FileBrowserServer {
                 });
                 this.server = null;
                 console.log(`[${this.botInstance}] File browser server stopped`);
+            }
+            
+            // Release port allocation
+            if (this.port) {
+                this.portResolver.releasePort(this.port, `FileBrowser-${this.botInstance}`);
             }
             
             // Reset state flags

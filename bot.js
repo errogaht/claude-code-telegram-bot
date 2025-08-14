@@ -16,6 +16,7 @@ const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
 const CommandsHandler = require('./CommandsHandler');
 const FileBrowserServer = require('./FileBrowserServer');
+const GitDiffServer = require('./GitDiffServer');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -77,8 +78,15 @@ class StreamTelegramBot {
     this.fileBrowserServer = new FileBrowserServer(this.options.workingDirectory, this.botInstanceName, ngrokToken);
     this.fileBrowserUrl = null;
     
+    // Git diff server with ngrok integration
+    this.gitDiffServer = new GitDiffServer(this.options.workingDirectory, this.botInstanceName, ngrokToken);
+    this.gitDiffUrl = null;
+    
     // Auto-start file browser in background (non-blocking)
     this.autoStartFileBrowser();
+    
+    // Auto-start git diff server in background (now with smart port resolution)
+    this.autoStartGitDiffServer();
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -1591,6 +1599,16 @@ class StreamTelegramBot {
         }
       }
       
+      // Stop git diff server if running
+      if (this.gitDiffUrl) {
+        console.log('🔍 Stopping git diff server...');
+        try {
+          await this.stopGitDiffServer();
+        } catch (error) {
+          console.error('Error stopping git diff server:', error);
+        }
+      }
+      
       process.exit(0);
     };
 
@@ -1603,6 +1621,13 @@ class StreamTelegramBot {
           await this.stopFileBrowser();
         } catch (error) {
           console.error('Error stopping file browser on exit:', error);
+        }
+      }
+      if (this.gitDiffUrl) {
+        try {
+          await this.stopGitDiffServer();
+        } catch (error) {
+          console.error('Error stopping git diff server on exit:', error);
         }
       }
     });
@@ -1827,6 +1852,48 @@ class StreamTelegramBot {
   }
 
   /**
+   * Start git diff server with ngrok tunnel
+   */
+  async startGitDiffServer() {
+    try {
+      if (this.gitDiffUrl) {
+        return this.gitDiffUrl; // Already running
+      }
+
+      console.log('Starting git diff server...');
+      await this.gitDiffServer.start();
+      
+      // Get secure URL with token for external access
+      this.gitDiffUrl = this.gitDiffServer.getSecurePublicUrl();
+      console.log(`✅ Git diff server available at: ${this.gitDiffUrl}`);
+      console.log(`🔐 URL includes security token for protected access`);
+      return this.gitDiffUrl;
+    } catch (error) {
+      console.error('Failed to start git diff server:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stop git diff server and close ngrok tunnel
+   */
+  async stopGitDiffServer() {
+    try {
+      if (!this.gitDiffUrl) {
+        return; // Already stopped
+      }
+
+      console.log('Stopping git diff server...');
+      await this.gitDiffServer.stop();
+      this.gitDiffUrl = null;
+      console.log('✅ Git diff server stopped');
+    } catch (error) {
+      console.error('Failed to stop git diff server:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Handle /files command to open file browser
    */
   async handleFilesCommand(chatId) {
@@ -2041,6 +2108,33 @@ class StreamTelegramBot {
   }
 
   /**
+   * Auto-start git diff server in background (non-blocking)
+   */
+  autoStartGitDiffServer() {
+    // Start in background without blocking bot initialization
+    setImmediate(async () => {
+      try {
+        console.log(`[${this.botInstanceName}] Auto-starting git diff server...`);
+        this.gitDiffUrl = await this.gitDiffServer.start();
+        
+        if (this.gitDiffUrl) {
+          console.log(`[${this.botInstanceName}] ✅ Git diff server auto-started: ${this.gitDiffUrl}`);
+          
+          // Note: We don't send auto-notification for git diff server to avoid spam
+          // Users can access it via the main menu button
+        }
+      } catch (error) {
+        console.error(`[${this.botInstanceName}] ❌ Git diff server auto-start failed:`, error);
+        
+        // For ngrok auth token errors, provide helpful message
+        if (error.message?.includes('authtoken') || error.message?.includes('authentication')) {
+          console.log(`[${this.botInstanceName}] 💡 Tip: Set NGROK_AUTHTOKEN environment variable for remote access`);
+        }
+      }
+    });
+  }
+
+  /**
    * Create comprehensive main menu keyboard with all bot functions
    */
   createMainMenuKeyboard(isLocalOnly = false) {
@@ -2064,7 +2158,18 @@ class StreamTelegramBot {
     }
     
     row1.push({ text: '📂 Projects', callback_data: 'main_menu:projects' });
-    row1.push({ text: '🔍 Git Status', callback_data: 'main_menu:git' });
+    
+    // Git button - show git diff viewer if available, otherwise show git status
+    if (!isLocalOnly && this.gitDiffUrl) {
+      const gitSecureUrl = this.gitDiffServer.getSecurePublicUrl();
+      if (gitSecureUrl) {
+        row1.push({ text: '🔍 Git', web_app: { url: gitSecureUrl } });
+      } else {
+        row1.push({ text: '🔍 Git', callback_data: 'main_menu:git' });
+      }
+    } else {
+      row1.push({ text: '🔍 Git', callback_data: 'main_menu:git' });
+    }
     keyboard.inline_keyboard.push(row1);
 
     // Row 2: Session Management
