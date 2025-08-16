@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>🚀 Development Tools - Vue Version</title>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 20px; background: #f5f5f5; 
+            min-height: 100vh;
+        }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 40px; }
+        
+        /* Version selector styles */
+        .version-selector { 
+            margin: 20px 0; padding: 20px; background: #e6f3ff; border-radius: 8px; 
+            border: 2px dashed #4FC08D; text-align: center;
+        }
+        .version-selector h3 { 
+            margin: 0 0 15px 0; color: #4FC08D; font-size: 1.1em; 
+        }
+        .version-buttons { 
+            display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;
+        }
+        .version-btn { 
+            padding: 12px 20px; border-radius: 6px; text-decoration: none; 
+            font-weight: 600; transition: all 0.2s; display: inline-block;
+            min-width: 140px; text-align: center;
+        }
+        .version-btn.current { 
+            background: #6c757d; color: white; border: 2px solid #6c757d; 
+        }
+        .version-btn.vue { 
+            background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%); 
+            color: white; border: 2px solid #4FC08D; 
+        }
+        .version-btn:hover { 
+            transform: translateY(-1px); filter: brightness(1.1);
+        }
+        
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .menu-item { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 25px; border-radius: 12px; 
+            text-decoration: none; transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: block;
+        }
+        .menu-item:hover { 
+            transform: translateY(-2px); box-shadow: 0 6px 25px rgba(0,0,0,0.15); 
+            color: white; text-decoration: none;
+        }
+        .menu-item.git { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .menu-item.info { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); }
+        .menu-icon { font-size: 2.5em; margin-bottom: 15px; display: block; }
+        .menu-title { font-size: 1.3em; font-weight: 600; margin-bottom: 8px; }
+        .menu-desc { font-size: 0.95em; opacity: 0.9; }
+        
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        
+        .debug-info {
+            background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;
+            border-left: 4px solid #4FC08D; font-family: monospace; font-size: 14px;
+        }
+        
+        @media (max-width: 768px) { 
+            .container { padding: 20px; margin: 10px; }
+            .menu-grid { grid-template-columns: 1fr; }
+            .version-buttons { flex-direction: column; align-items: center; }
+            .version-btn { min-width: 200px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Development Tools <span class="vue-badge">Vue.js v2</span></h1>
+            <p>Bot Instance: <strong><%= botInstance %></strong></p>
+            
+            <div class="version-selector">
+                <h3>🧪 Version Selector</h3>
+                <div class="version-buttons">
+                    <a href="/" class="version-btn current">📄 Current Version</a>
+                    <a href="/v2" class="version-btn vue">🚀 Vue Version</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="debug-info">
+            <strong>🔧 Debug Info:</strong><br>
+            Vue.js Version: v2 | Status: Active | Routes: All configured
+        </div>
+        
+        <div class="menu-grid">
+            <a href="/v2/files" class="menu-item">
+                <span class="menu-icon">📁</span>
+                <div class="menu-title">File Browser</div>
+                <div class="menu-desc">Browse and view project files with Vue.js reactivity</div>
+            </a>
+            
+            <a href="/v2/git" class="menu-item git">
+                <span class="menu-icon">🔍</span>
+                <div class="menu-title">Git Diff Viewer</div>
+                <div class="menu-desc">View git changes with Vue.js enhanced interface</div>
+            </a>
+            
+            <a href="/v2/info" class="menu-item info">
+                <span class="menu-icon">ℹ️</span>
+                <div class="menu-title">QTunnel Info</div>
+                <div class="menu-desc">Vue.js powered tunnel status dashboard</div>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Simple JavaScript without Vue for now -->
+    <script>
+        console.log('Vue.js main menu loaded successfully');
+        
+        // Simple token management
+        function getTokenFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('token');
+        }
+        
+        function addTokenToLinks() {
+            const token = getTokenFromUrl();
+            if (token) {
+                const links = document.querySelectorAll('a[href^="/v2"]');
+                links.forEach(link => {
+                    const url = new URL(link.href, window.location.origin);
+                    if (!url.searchParams.has('token')) {
+                        url.searchParams.set('token', token);
+                        link.href = url.toString();
+                    }
+                });
+            }
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            addTokenToLinks();
+            console.log('Token management initialized');
+        });
+    </script>
+</body>
+</html>

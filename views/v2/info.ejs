@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>🚀 QTunnel Info - Vue Version</title>
+    
+    <!-- Vue.js -->
+    <script src="/static/assets/vue.min.js"></script>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 20px; background: #f5f5f5; 
+            min-height: 100vh;
+        }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .back-link { display: inline-block; color: #007cba; text-decoration: none; margin-bottom: 20px; }
+        .back-link:hover { text-decoration: underline; }
+        .status { margin: 20px 0; padding: 15px; border-radius: 5px; background: #d1edff; color: #0c5460; }
+        .info-section { margin: 20px 0; }
+        .info-section h3 { color: #007cba; margin-bottom: 10px; }
+        .provider-info { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #4FC08D; }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        
+        /* Vue-specific enhancements */
+        .tunnel-status { 
+            display: flex; align-items: center; gap: 10px; margin: 10px 0;
+            padding: 10px; background: white; border-radius: 5px; border: 1px solid #e1e1e1;
+        }
+        .status-indicator { 
+            width: 12px; height: 12px; border-radius: 50%; 
+        }
+        .status-active { background: #28a745; }
+        .status-inactive { background: #dc3545; }
+        .status-loading { background: #ffc107; animation: pulse 1s infinite; }
+        .refresh-btn { 
+            padding: 8px 16px; background: #4FC08D; color: white; border: none; 
+            border-radius: 4px; cursor: pointer; transition: background 0.2s;
+        }
+        .refresh-btn:hover { background: #42b883; }
+        .tunnel-url { 
+            font-family: monospace; background: #f8f9fa; padding: 8px; 
+            border-radius: 4px; word-break: break-all; margin: 5px 0;
+        }
+        .loading { text-align: center; padding: 20px; color: #666; }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        @media (max-width: 768px) { 
+            .container { margin: 10px; padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <a href="/v2" class="back-link">← Back to Vue Home</a>
+            
+            <h1>🚀 Development Tools - QTunnel Info <span class="vue-badge">Vue.js</span></h1>
+            
+            <qtunnel-info-vue 
+                :initial-stats="<%= JSON.stringify(stats) %>"
+                :bot-instance="'<%= botInstance %>'">
+            </qtunnel-info-vue>
+        </div>
+    </div>
+    
+    <script>
+        // Token Management
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7;
+                this.init();
+            }
+
+            init() {
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    this.saveTokenToCookie(urlToken);
+                    this.cleanUrl();
+                }
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+            }
+
+            cleanUrl() {
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+        }
+
+        // QTunnel Info Component
+        const QTunnelInfoVue = {
+            props: ['initialStats', 'botInstance'],
+            data() {
+                return {
+                    stats: this.initialStats,
+                    loading: false,
+                    lastUpdated: new Date(),
+                    autoRefresh: false,
+                    refreshInterval: null
+                };
+            },
+            computed: {
+                formattedLastUpdated() {
+                    return this.lastUpdated.toLocaleTimeString();
+                },
+                tunnelStatus() {
+                    return this.stats.activeTunnels > 0 ? 'active' : 'inactive';
+                }
+            },
+            methods: {
+                async refreshStats() {
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/v2/info');
+                        if (response.ok) {
+                            // In a real implementation, you'd want a JSON API endpoint
+                            this.lastUpdated = new Date();
+                        }
+                    } catch (error) {
+                        console.error('Failed to refresh stats:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                toggleAutoRefresh() {
+                    this.autoRefresh = !this.autoRefresh;
+                    if (this.autoRefresh) {
+                        this.refreshInterval = setInterval(() => {
+                            this.refreshStats();
+                        }, 15000); // Refresh every 15 seconds
+                    } else {
+                        if (this.refreshInterval) {
+                            clearInterval(this.refreshInterval);
+                            this.refreshInterval = null;
+                        }
+                    }
+                },
+                copyTunnelUrl(url) {
+                    navigator.clipboard.writeText(url).then(() => {
+                        alert('Tunnel URL copied to clipboard!');
+                    }).catch(err => {
+                        console.error('Failed to copy: ', err);
+                    });
+                },
+                openTunnel(url) {
+                    window.open(url, '_blank');
+                }
+            },
+            beforeUnmount() {
+                if (this.refreshInterval) {
+                    clearInterval(this.refreshInterval);
+                }
+            },
+            template: `
+                <div>
+                    <div class="status">
+                        <strong>🌟 QTunnel WebSocket Tunneling:</strong> Fast, secure tunneling with WebSocket protocol!<br>
+                        Direct access to your development tools through qtunnel.q9x.ru
+                    </div>
+                    
+                    <div class="info-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3>Current Status</h3>
+                            <div style="display: flex; gap: 10px;">
+                                <button @click="refreshStats" :disabled="loading" class="refresh-btn">
+                                    {{ loading ? '🔄 Refreshing...' : '🔄 Refresh' }}
+                                </button>
+                                <button @click="toggleAutoRefresh" class="refresh-btn">
+                                    {{ autoRefresh ? '⏸️ Stop Auto' : '▶️ Auto' }}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="tunnel-status">
+                            <div :class="'status-indicator status-' + (loading ? 'loading' : tunnelStatus)"></div>
+                            <div>
+                                <strong>Bot Instance:</strong> {{ botInstance }}<br>
+                                <strong>Provider:</strong> {{ stats.provider }}<br>
+                                <strong>Server:</strong> {{ stats.server }}<br>
+                                <strong>Active Tunnels:</strong> {{ stats.activeTunnels }}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-section">
+                        <h3>QTunnel Features</h3>
+                        <div class="provider-info">
+                            <strong>✅ WebSocket-based tunneling</strong><br>
+                            <small>Fast, reliable connection using modern WebSocket protocol</small><br><br>
+                            <strong>✅ HTTPS with SSL certificates</strong><br>
+                            <small>Secure encrypted connections to *.q9x.ru domain</small><br><br>
+                            <strong>✅ No installation required</strong><br>
+                            <small>Binary already available at /usr/local/bin/qtunnel</small>
+                        </div>
+                    </div>
+                    
+                    <div v-if="stats.tunnels && stats.tunnels.length > 0" class="info-section">
+                        <h3>Active Tunnels</h3>
+                        <div v-for="tunnel in stats.tunnels" :key="tunnel.url" class="tunnel-status">
+                            <div class="status-indicator status-active"></div>
+                            <div style="flex: 1;">
+                                <strong>{{ tunnel.serviceName }}</strong> (Port: {{ tunnel.port }})<br>
+                                <div class="tunnel-url">{{ tunnel.url }}</div>
+                                <small>Status: {{ tunnel.status }}</small><br>
+                                <div style="margin-top: 8px; display: flex; gap: 8px;">
+                                    <button @click="copyTunnelUrl(tunnel.url)" class="refresh-btn" style="font-size: 12px; padding: 4px 8px;">
+                                        📋 Copy
+                                    </button>
+                                    <button @click="openTunnel(tunnel.url)" class="refresh-btn" style="font-size: 12px; padding: 4px 8px;">
+                                        🔗 Open
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="font-size: 12px; color: #666; margin-top: 20px; text-align: center;">
+                        Last updated: {{ formattedLastUpdated }}
+                        <span v-if="autoRefresh">(Auto-refresh: ON)</span>
+                    </div>
+                </div>
+            `
+        };
+
+        // Vue App
+        const { createApp } = Vue;
+        createApp({
+            components: {
+                'qtunnel-info-vue': QTunnelInfoVue
+            },
+            mounted() {
+                // Initialize token management
+                new TokenManager();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

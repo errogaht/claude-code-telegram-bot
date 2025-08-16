@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Git Status - Vue Version</title>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 10px; background: #f5f5f5; 
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .back-link:hover { color: #007cba; background: #e9ecef; }
+        .nav-links { margin-bottom: 15px; }
+        .nav-links a { 
+            display: inline-block; margin-right: 15px; padding: 8px 12px; 
+            background: #f8f9fa; border-radius: 4px; text-decoration: none; 
+            color: #333; border: 1px solid #e1e1e1;
+        }
+        .nav-links a:hover { background: #e9ecef; }
+        .nav-links a.active { background: #4FC08D; color: white; }
+        .status-content { 
+            background: #f8f9fa; border: 1px solid #e1e1e1; border-radius: 4px; padding: 20px;
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 14px; line-height: 1.5; white-space: pre-wrap;
+        }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        .debug-info {
+            background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;
+            border-left: 4px solid #4FC08D; font-family: monospace; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/v2/git" class="back-link">← Back to Git Diff</a>
+            <h1>📊 Git Status <span class="vue-badge">Vue.js</span></h1>
+            <div class="nav-links">
+                <a href="/v2/git">Changed Files</a>
+                <a href="/v2/git/status" class="active">Full Status</a>
+            </div>
+        </div>
+        
+        <div class="debug-info">
+            <strong>🔧 Debug Info:</strong><br>
+            Git Status Length: <%= status.length %> characters | Status: Working
+        </div>
+        
+        <div class="status-content"><%= status %></div>
+    </div>
+</body>
+</html>

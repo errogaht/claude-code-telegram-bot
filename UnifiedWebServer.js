@@ -49,6 +49,7 @@ class UnifiedWebServer {
         this.publicUrl = null;
         
         this.setupRoutes();
+        this.setupVueRoutes(); // Add Vue.js routes alongside existing ones
     }
 
     setupRoutes() {
@@ -434,9 +435,40 @@ class UnifiedWebServer {
         .menu-icon { font-size: 2.5em; margin-bottom: 15px; display: block; }
         .menu-title { font-size: 1.3em; font-weight: 600; margin-bottom: 8px; }
         .menu-desc { font-size: 0.95em; opacity: 0.9; }
+        .version-selector { 
+            margin: 20px 0; padding: 20px; background: #f8f9fa; border-radius: 8px; 
+            border: 2px dashed #007cba; text-align: center;
+        }
+        .version-selector h3 { 
+            margin: 0 0 15px 0; color: #007cba; font-size: 1.1em; 
+        }
+        .version-buttons { 
+            display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;
+        }
+        .version-btn { 
+            padding: 12px 20px; border-radius: 6px; text-decoration: none; 
+            font-weight: 600; transition: all 0.2s; display: inline-block;
+            min-width: 140px; text-align: center;
+        }
+        .version-btn.current { 
+            background: #6c757d; color: white; border: 2px solid #6c757d; 
+        }
+        .version-btn.current:hover { 
+            background: #5a6268; transform: translateY(-1px); 
+        }
+        .version-btn.new { 
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
+            color: white; border: 2px solid #28a745; 
+        }
+        .version-btn.new:hover { 
+            background: linear-gradient(135deg, #218838 0%, #1eb489 100%); 
+            transform: translateY(-1px); 
+        }
         @media (max-width: 768px) { 
             .container { padding: 20px; margin: 10px; }
             .menu-grid { grid-template-columns: 1fr; }
+            .version-buttons { flex-direction: column; align-items: center; }
+            .version-btn { min-width: 200px; }
         }
     </style>
 </head>
@@ -445,6 +477,14 @@ class UnifiedWebServer {
         <div class="header">
             <h1>🚀 Development Tools</h1>
             <p>Bot Instance: <strong>${this.botInstance}</strong></p>
+            
+            <div class="version-selector">
+                <h3>🧪 Version Selector</h3>
+                <div class="version-buttons">
+                    <a href="/" class="version-btn current">📄 Current Version</a>
+                    <a href="/v2" class="version-btn new">🚀 Vue Version</a>
+                </div>
+            </div>
         </div>
         
         <div class="menu-grid">
@@ -1075,6 +1115,147 @@ class UnifiedWebServer {
             this.isStarting = false;
             throw error;
         }
+    }
+
+    // ========== VUE.JS IMPLEMENTATION (NEW) ==========
+    
+    setupVueRoutes() {
+        // Configure EJS as template engine for Vue routes
+        this.app.set('view engine', 'ejs');
+        this.app.set('views', path.join(__dirname, 'views'));
+        
+        // ========== NEW VUE ROUTES (/v2 prefix) ==========
+        
+        // Main menu with version selector
+        this.app.get('/v2', async (req, res) => {
+            res.render('v2/main-menu', {
+                botInstance: this.botInstance,
+                currentVersion: 'vue'
+            });
+        });
+
+        // File browser routes
+        this.app.get('/v2/files', async (req, res) => {
+            const currentPath = req.query.path || '';
+            const fullPath = path.join(this.projectRoot, currentPath);
+            
+            try {
+                await this.validatePath(fullPath);
+                const content = await this.generateFileList(fullPath, currentPath);
+                res.render('v2/file-browser-simple', {
+                    ...content,
+                    currentPath,
+                    botInstance: this.botInstance
+                });
+            } catch (error) {
+                res.status(404).render('v2/error', { 
+                    message: error.message,
+                    botInstance: this.botInstance 
+                });
+            }
+        });
+
+        this.app.get('/v2/files/view', async (req, res) => {
+            const filePath = req.query.path;
+            if (!filePath) {
+                return res.status(400).render('v2/error', { 
+                    message: 'File path required',
+                    botInstance: this.botInstance 
+                });
+            }
+
+            const fullPath = path.join(this.projectRoot, filePath);
+            
+            try {
+                await this.validatePath(fullPath);
+                const stats = await fs.stat(fullPath);
+                
+                if (stats.isDirectory()) {
+                    return res.redirect(`/v2/files?path=${encodeURIComponent(filePath)}`);
+                }
+
+                const content = await fs.readFile(fullPath, 'utf8');
+                const fileExtension = path.extname(fullPath).toLowerCase();
+                
+                res.render('v2/file-viewer-simple', {
+                    content,
+                    filePath,
+                    fileExtension,
+                    language: this.getLanguageForHighlighting(fileExtension),
+                    botInstance: this.botInstance
+                });
+            } catch (error) {
+                res.status(404).render('v2/error', { 
+                    message: error.message,
+                    botInstance: this.botInstance 
+                });
+            }
+        });
+
+        // Git diff routes
+        this.app.get('/v2/git', async (req, res) => {
+            try {
+                const changedFiles = await this.getChangedFiles();
+                res.render('v2/git-diff-simple', {
+                    files: changedFiles,
+                    botInstance: this.botInstance
+                });
+            } catch (error) {
+                res.status(500).render('v2/error', { 
+                    message: error.message,
+                    botInstance: this.botInstance 
+                });
+            }
+        });
+
+        this.app.get('/v2/git/diff', async (req, res) => {
+            const filePath = req.query.file;
+            if (!filePath) {
+                return res.status(400).render('v2/error', { 
+                    message: 'File path required',
+                    botInstance: this.botInstance 
+                });
+            }
+
+            try {
+                const diff = await this.getFileDiff(filePath);
+                const highlightedDiff = this.highlightDiff(diff);
+                res.render('v2/diff-viewer-simple', {
+                    diff: highlightedDiff,
+                    filePath,
+                    botInstance: this.botInstance
+                });
+            } catch (error) {
+                res.status(500).render('v2/error', { 
+                    message: error.message,
+                    botInstance: this.botInstance 
+                });
+            }
+        });
+
+        this.app.get('/v2/git/status', async (req, res) => {
+            try {
+                const status = await this.getGitStatus();
+                res.render('v2/git-status-simple', {
+                    status,
+                    botInstance: this.botInstance
+                });
+            } catch (error) {
+                res.status(500).render('v2/error', { 
+                    message: error.message,
+                    botInstance: this.botInstance 
+                });
+            }
+        });
+
+        // Info page
+        this.app.get('/v2/info', async (req, res) => {
+            const stats = this.tunnelAdapter.getTunnelStats();
+            res.render('v2/info-simple', {
+                stats,
+                botInstance: this.botInstance
+            });
+        });
     }
 }
 

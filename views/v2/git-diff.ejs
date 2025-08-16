@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>🔍 Git Diff Viewer - Vue Version</title>
+    
+    <!-- Vue.js -->
+    <script src="/static/assets/vue.min.js"></script>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 10px; background: #f5f5f5; 
+            min-height: 100vh; overflow-x: hidden;
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .back-link:hover { color: #007cba; background: #e9ecef; }
+        .nav-links { margin-bottom: 15px; }
+        .nav-links a { 
+            display: inline-block; margin-right: 15px; padding: 8px 12px; 
+            background: #f8f9fa; border-radius: 4px; text-decoration: none; 
+            color: #333; border: 1px solid #e1e1e1;
+        }
+        .nav-links a:hover { background: #e9ecef; }
+        .nav-links a.active { background: #4FC08D; color: white; }
+        .file-list { border-collapse: collapse; width: 100%; }
+        .file-list th, .file-list td { padding: 12px; text-align: left; border-bottom: 1px solid #e1e1e1; }
+        .file-list th { background: #f8f9fa; font-weight: 600; }
+        .file-item { display: flex; align-items: center; }
+        .file-icon { width: 20px; margin-right: 10px; font-size: 16px; }
+        .file-name { color: #333; text-decoration: none; }
+        .file-name:hover { color: #007cba; }
+        .change-type { 
+            padding: 4px 8px; border-radius: 3px; font-size: 12px; font-weight: 500;
+        }
+        .change-type.modified { background: #fff3cd; color: #856404; }
+        .change-type.added { background: #d1edff; color: #0c5460; }
+        .change-type.deleted { background: #f8d7da; color: #721c24; }
+        .change-type.untracked { background: #e2e3e5; color: #383d41; }
+        .change-type.renamed { background: #d4edda; color: #155724; }
+        .status-code { font-family: monospace; font-size: 12px; color: #666; }
+        .empty-state { text-align: center; padding: 40px; color: #666; }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        
+        /* Vue-specific enhancements */
+        .file-row { transition: background-color 0.2s; }
+        .file-row:hover { background-color: #f8f9fa; }
+        .stats-summary { 
+            background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px;
+            display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
+        }
+        .stat-item { 
+            display: flex; align-items: center; gap: 8px; 
+            padding: 8px 12px; background: white; border-radius: 4px; border: 1px solid #e1e1e1;
+        }
+        
+        @media (max-width: 768px) { 
+            .container { padding: 10px; margin: 10px; }
+            .file-list { font-size: 14px; }
+            .file-list td, .file-list th { padding: 8px 5px; }
+            .stats-summary { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <a href="/v2" class="back-link">← Vue Home</a>
+                <h1>🔍 Git Diff Viewer <span class="vue-badge">Vue.js</span></h1>
+                <div class="nav-links">
+                    <a href="/v2/git" class="active">Changed Files</a>
+                    <a href="/v2/git/status">Full Status</a>
+                </div>
+            </div>
+            
+            <git-diff-vue :files="<%= JSON.stringify(files) %>"></git-diff-vue>
+        </div>
+    </div>
+    
+    <script>
+        // Token Management
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7;
+                this.init();
+            }
+
+            init() {
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    this.saveTokenToCookie(urlToken);
+                    this.cleanUrl();
+                }
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+            }
+
+            getTokenFromCookie() {
+                const name = this.COOKIE_NAME + '=';
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) === 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+
+            cleanUrl() {
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+
+            addTokenToUrl(url) {
+                const token = this.getTokenFromCookie();
+                if (!token) return url;
+
+                const urlObj = new URL(url, window.location.origin);
+                if (!urlObj.searchParams.has('token')) {
+                    urlObj.searchParams.set('token', token);
+                }
+                return urlObj.toString();
+            }
+        }
+
+        // Git Diff Component
+        const GitDiffVue = {
+            props: ['files'],
+            computed: {
+                stats() {
+                    const stats = {
+                        modified: this.files.filter(f => f.changeType === 'modified').length,
+                        added: this.files.filter(f => f.changeType === 'added').length,
+                        deleted: this.files.filter(f => f.changeType === 'deleted').length,
+                        renamed: this.files.filter(f => f.changeType === 'renamed').length,
+                        untracked: this.files.filter(f => f.changeType === 'untracked').length
+                    };
+                    stats.total = this.files.length;
+                    return stats;
+                },
+                isEmpty() {
+                    return this.files.length === 0;
+                }
+            },
+            methods: {
+                enhanceUrl(url) {
+                    const tokenManager = new TokenManager();
+                    return tokenManager.addTokenToUrl(url);
+                },
+                getChangeTypeLabel(type) {
+                    const labels = {
+                        'modified': 'Modified',
+                        'added': 'Added',
+                        'deleted': 'Deleted',
+                        'renamed': 'Renamed',
+                        'untracked': 'Untracked'
+                    };
+                    return labels[type] || type;
+                }
+            },
+            template: `
+                <div>
+                    <div v-if="isEmpty" class="empty-state">
+                        <h3>✅ No Changes</h3>
+                        <p>Working directory is clean</p>
+                    </div>
+                    
+                    <div v-else>
+                        <div class="stats-summary">
+                            <div class="stat-item">
+                                <span>📊</span>
+                                <strong>{{ stats.total }}</strong> files changed
+                            </div>
+                            <div v-if="stats.modified" class="stat-item">
+                                <span>📝</span>
+                                <strong>{{ stats.modified }}</strong> modified
+                            </div>
+                            <div v-if="stats.added" class="stat-item">
+                                <span>➕</span>
+                                <strong>{{ stats.added }}</strong> added
+                            </div>
+                            <div v-if="stats.deleted" class="stat-item">
+                                <span>🗑️</span>
+                                <strong>{{ stats.deleted }}</strong> deleted
+                            </div>
+                            <div v-if="stats.untracked" class="stat-item">
+                                <span>❓</span>
+                                <strong>{{ stats.untracked }}</strong> untracked
+                            </div>
+                        </div>
+                        
+                        <table class="file-list">
+                            <thead>
+                                <tr>
+                                    <th>File</th>
+                                    <th>Status</th>
+                                    <th>Change Type</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="file in files" :key="file.path" class="file-row">
+                                    <td>
+                                        <div class="file-item">
+                                            <span class="file-icon">{{ file.icon }}</span>
+                                            <a :href="enhanceUrl('/v2/git/diff?file=' + encodeURIComponent(file.path))" 
+                                               class="file-name">{{ file.path }}</a>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="status-code">{{ file.status }}</span>
+                                    </td>
+                                    <td>
+                                        <span :class="'change-type ' + file.changeType">
+                                            {{ getChangeTypeLabel(file.changeType) }}
+                                        </span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `
+        };
+
+        // Vue App
+        const { createApp } = Vue;
+        createApp({
+            components: {
+                'git-diff-vue': GitDiffVue
+            },
+            mounted() {
+                // Initialize token management
+                new TokenManager();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

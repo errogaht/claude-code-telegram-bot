@@ -45,7 +45,8 @@ class QTunnel {
         console.log(`[QTunnel] Starting tunnel for ${serviceName} on port ${port}`);
 
         return new Promise((resolve, reject) => {
-            const process = spawn('qtunnel', [
+            const qtunnelPath = './qtunnel-new'; // Use improved version temporarily
+            const process = spawn(qtunnelPath, [
                 '--server', this.server,
                 '--token', this.token,
                 port.toString()

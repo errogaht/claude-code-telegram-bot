@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 QTunnel Info - Vue Version</title>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 20px; background: #f5f5f5; 
+            min-height: 100vh;
+        }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .back-link { display: inline-block; color: #007cba; text-decoration: none; margin-bottom: 20px; }
+        .back-link:hover { text-decoration: underline; }
+        .status { margin: 20px 0; padding: 15px; border-radius: 5px; background: #d1edff; color: #0c5460; }
+        .info-section { margin: 20px 0; }
+        .info-section h3 { color: #007cba; margin-bottom: 10px; }
+        .provider-info { background: #f8f9fa; padding: 15px; border-radius: 5px; border-left: 4px solid #4FC08D; }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        .debug-info {
+            background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;
+            border-left: 4px solid #4FC08D; font-family: monospace; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/v2" class="back-link">← Back to Vue Home</a>
+        
+        <h1>🚀 QTunnel Info <span class="vue-badge">Vue.js</span></h1>
+        
+        <div class="debug-info">
+            <strong>🔧 Debug Info:</strong><br>
+            Bot Instance: <%= botInstance %> | Provider: <%= stats.provider %> | Active Tunnels: <%= stats.activeTunnels %>
+        </div>
+        
+        <div class="status">
+            <strong>🌟 QTunnel WebSocket Tunneling:</strong> Fast, secure tunneling with WebSocket protocol!<br>
+            Direct access to your development tools through qtunnel.q9x.ru
+        </div>
+        
+        <div class="info-section">
+            <h3>Current Status</h3>
+            <p><strong>Bot Instance:</strong> <%= botInstance %></p>
+            <p><strong>Provider:</strong> <%= stats.provider %></p>
+            <p><strong>Server:</strong> <%= stats.server %></p>
+            <p><strong>Active Tunnels:</strong> <%= stats.activeTunnels %></p>
+        </div>
+        
+        <div class="info-section">
+            <h3>QTunnel Features</h3>
+            <div class="provider-info">
+                <strong>✅ WebSocket-based tunneling</strong><br>
+                <small>Fast, reliable connection using modern WebSocket protocol</small><br><br>
+                <strong>✅ HTTPS with SSL certificates</strong><br>
+                <small>Secure encrypted connections to *.q9x.ru domain</small><br><br>
+                <strong>✅ No installation required</strong><br>
+                <small>Binary already available at /usr/local/bin/qtunnel</small>
+            </div>
+        </div>
+        
+        <% if (stats.tunnels && stats.tunnels.length > 0) { %>
+        <div class="info-section">
+            <h3>Active Tunnels</h3>
+            <% stats.tunnels.forEach(tunnel => { %>
+                <div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <strong><%= tunnel.serviceName %></strong> (Port: <%= tunnel.port %>)<br>
+                    <a href="<%= tunnel.url %>" target="_blank"><%= tunnel.url %></a><br>
+                    <small>Status: <%= tunnel.status %></small>
+                </div>
+            <% }); %>
+        </div>
+        <% } %>
+    </div>
+</body>
+</html>

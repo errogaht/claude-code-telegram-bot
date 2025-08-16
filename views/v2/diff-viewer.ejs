@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>📄 <%= require('path').basename(filePath) %> - Diff - Vue Version</title>
+    
+    <!-- Vue.js -->
+    <script src="/static/assets/vue.min.js"></script>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 10px; background: #f5f5f5; 
+            min-height: 100vh; overflow-x: hidden;
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .back-link:hover { color: #007cba; background: #e9ecef; }
+        .diff-content { 
+            background: #f8f9fa; border: 1px solid #e1e1e1; border-radius: 4px; overflow-x: auto; 
+            font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+            font-size: 13px; line-height: 1.4;
+        }
+        .diff-line { 
+            padding: 2px 8px; white-space: pre; border-left: 3px solid transparent; margin: 0;
+        }
+        .diff-line.added { 
+            background-color: #e6ffed; border-left-color: #28a745; color: #22863a;
+        }
+        .diff-line.removed { 
+            background-color: #ffeef0; border-left-color: #d73a49; color: #b31d28;
+        }
+        .diff-line.context { color: #586069; }
+        .diff-line.header { 
+            background-color: #f1f8ff; color: #0366d6; font-weight: 500;
+        }
+        .diff-line.hunk { 
+            background-color: #f6f8fa; color: #6a737d; border-left-color: #d1d5da;
+        }
+        .line-number {
+            display: inline-block; width: 50px; color: #959da5; text-align: right;
+            margin-right: 10px; user-select: none;
+        }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        
+        /* Vue-specific enhancements */
+        .diff-actions { 
+            margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+        }
+        .action-btn { 
+            padding: 6px 12px; background: #007cba; color: white; text-decoration: none; 
+            border-radius: 4px; font-size: 14px; transition: background 0.2s; border: none; cursor: pointer;
+        }
+        .action-btn:hover { background: #005a85; }
+        .diff-stats { 
+            background: #f8f9fa; padding: 10px 15px; border-radius: 4px; 
+            font-size: 14px; color: #666; margin-bottom: 15px;
+            display: flex; gap: 20px; flex-wrap: wrap;
+        }
+        .stat-item { display: flex; align-items: center; gap: 5px; }
+        .stat-added { color: #28a745; }
+        .stat-removed { color: #d73a49; }
+        .loading { text-align: center; padding: 40px; color: #666; }
+        
+        @media (max-width: 768px) { 
+            .container { padding: 10px; margin: 10px; }
+            .diff-content { font-size: 12px; }
+            .line-number { width: 40px; margin-right: 5px; }
+            .diff-stats { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <a href="/v2/git" class="back-link">← Back to file list</a>
+                <h1>📄 <%= require('path').basename(filePath) %> <span class="vue-badge">Vue.js</span></h1>
+                <p>Path: <%= filePath %></p>
+            </div>
+            
+            <diff-viewer-vue 
+                :diff-content="<%= JSON.stringify(diff) %>"
+                :file-path="'<%= filePath %>'">
+            </diff-viewer-vue>
+        </div>
+    </div>
+    
+    <script>
+        // Token Management
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7;
+                this.init();
+            }
+
+            init() {
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    this.saveTokenToCookie(urlToken);
+                    this.cleanUrl();
+                }
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+            }
+
+            cleanUrl() {
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+        }
+
+        // Diff Viewer Component
+        const DiffViewerVue = {
+            props: ['diffContent', 'filePath'],
+            data() {
+                return {
+                    loading: false,
+                    showLineNumbers: true,
+                    compactMode: false
+                };
+            },
+            computed: {
+                parsedDiff() {
+                    const lines = this.diffContent.split('\n');
+                    const parsedLines = [];
+                    let lineNumber = 1;
+                    let addedLines = 0;
+                    let removedLines = 0;
+
+                    for (const line of lines) {
+                        let className = 'context';
+                        
+                        if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff --git')) {
+                            className = 'header';
+                        } else if (line.startsWith('@@')) {
+                            className = 'hunk';
+                        } else if (line.startsWith('+')) {
+                            className = 'added';
+                            addedLines++;
+                        } else if (line.startsWith('-')) {
+                            className = 'removed';
+                            removedLines++;
+                        }
+
+                        parsedLines.push({
+                            content: line,
+                            className,
+                            lineNumber: lineNumber++
+                        });
+                    }
+
+                    return {
+                        lines: parsedLines,
+                        stats: { addedLines, removedLines, totalLines: lines.length }
+                    };
+                },
+                escapeHtml() {
+                    const map = {
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&#039;'
+                    };
+                    return (text) => text.replace(/[&<>"']/g, m => map[m]);
+                }
+            },
+            methods: {
+                toggleLineNumbers() {
+                    this.showLineNumbers = !this.showLineNumbers;
+                },
+                toggleCompactMode() {
+                    this.compactMode = !this.compactMode;
+                },
+                copyDiff() {
+                    navigator.clipboard.writeText(this.diffContent).then(() => {
+                        alert('Diff copied to clipboard!');
+                    }).catch(err => {
+                        console.error('Failed to copy: ', err);
+                    });
+                },
+                scrollToNextChange() {
+                    const changes = document.querySelectorAll('.diff-line.added, .diff-line.removed');
+                    if (changes.length > 0) {
+                        changes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            },
+            template: `
+                <div>
+                    <div class="diff-stats">
+                        <div class="stat-item stat-added">
+                            <span>➕</span>
+                            <strong>{{ parsedDiff.stats.addedLines }}</strong> additions
+                        </div>
+                        <div class="stat-item stat-removed">
+                            <span>➖</span>
+                            <strong>{{ parsedDiff.stats.removedLines }}</strong> deletions
+                        </div>
+                        <div class="stat-item">
+                            <span>📊</span>
+                            <strong>{{ parsedDiff.stats.totalLines }}</strong> total lines
+                        </div>
+                    </div>
+                    
+                    <div class="diff-actions">
+                        <button @click="toggleLineNumbers" class="action-btn">
+                            {{ showLineNumbers ? '🔢 Hide Lines' : '🔢 Show Lines' }}
+                        </button>
+                        <button @click="toggleCompactMode" class="action-btn">
+                            {{ compactMode ? '📖 Full View' : '📄 Compact' }}
+                        </button>
+                        <button @click="copyDiff" class="action-btn">
+                            📋 Copy Diff
+                        </button>
+                        <button @click="scrollToNextChange" class="action-btn">
+                            🎯 Next Change
+                        </button>
+                    </div>
+                    
+                    <div v-if="loading" class="loading">
+                        Loading diff content...
+                    </div>
+                    
+                    <div v-else class="diff-content">
+                        <div 
+                            v-for="line in parsedDiff.lines" 
+                            :key="line.lineNumber"
+                            :class="'diff-line ' + line.className"
+                            v-show="!compactMode || line.className !== 'context'"
+                        >
+                            <span v-if="showLineNumbers" class="line-number">{{ line.lineNumber }}</span>
+                            <span v-html="escapeHtml(line.content)"></span>
+                        </div>
+                    </div>
+                </div>
+            `
+        };
+
+        // Vue App
+        const { createApp } = Vue;
+        createApp({
+            components: {
+                'diff-viewer-vue': DiffViewerVue
+            },
+            mounted() {
+                // Initialize token management
+                new TokenManager();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

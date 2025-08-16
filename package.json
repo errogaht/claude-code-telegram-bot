@@ -45,6 +45,7 @@
   "dependencies": {
     "@ngrok/ngrok": "^1.5.2",
     "axios": "^1.11.0",
+    "ejs": "^3.1.10",
     "express": "^5.1.0",
     "form-data": "^4.0.4",
     "node-telegram-bot-api": "^0.61.0"

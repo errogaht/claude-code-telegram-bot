@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>📁 File Browser - Vue Version</title>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 10px; background: #f5f5f5; 
+            min-height: 100vh; overflow-x: hidden;
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .back-link:hover { color: #007cba; background: #e9ecef; }
+        .breadcrumbs { color: #666; margin-bottom: 10px; }
+        .breadcrumbs a { color: #007cba; text-decoration: none; }
+        .breadcrumbs a:hover { text-decoration: underline; }
+        .file-list { border-collapse: collapse; width: 100%; }
+        .file-list th, .file-list td { padding: 12px; text-align: left; border-bottom: 1px solid #e1e1e1; }
+        .file-list th { background: #f8f9fa; font-weight: 600; }
+        .file-item { display: flex; align-items: center; }
+        .file-icon { width: 20px; margin-right: 10px; font-size: 16px; }
+        .file-name { color: #333; text-decoration: none; }
+        .file-name:hover { color: #007cba; }
+        .directory { color: #007cba; font-weight: 500; }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        
+        /* Vue-specific styles */
+        .loading { text-align: center; padding: 40px; color: #666; }
+        .file-row { transition: background-color 0.2s; }
+        .file-row:hover { background-color: #f8f9fa; }
+        
+        @media (max-width: 768px) { 
+            .container { padding: 10px; margin: 10px; }
+            .file-list { font-size: 14px; }
+            .file-list td, .file-list th { padding: 8px 5px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <a href="/v2" class="back-link">← Vue Home</a>
+                <h1>📁 File Browser <span class="vue-badge">Vue.js</span></h1>
+                <breadcrumbs-component :current-path="'<%= currentPath %>'"></breadcrumbs-component>
+                <% if (currentPath) { %>
+                    <a href="/v2/files?path=<%= encodeURIComponent(require('path').dirname(currentPath)) %>" class="back-link">← Back</a>
+                <% } %>
+            </div>
+            
+            <file-browser-vue 
+                :directories="<%= JSON.stringify(directories) %>"
+                :files="<%= JSON.stringify(files) %>">
+            </file-browser-vue>
+        </div>
+    </div>
+    
+    <script>
+        // Token Management
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7;
+                this.init();
+            }
+
+            init() {
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    this.saveTokenToCookie(urlToken);
+                    this.cleanUrl();
+                }
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+            }
+
+            getTokenFromCookie() {
+                const name = this.COOKIE_NAME + '=';
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) === 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+
+            cleanUrl() {
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+
+            addTokenToUrl(url) {
+                const token = this.getTokenFromCookie();
+                if (!token) return url;
+
+                const urlObj = new URL(url, window.location.origin);
+                if (!urlObj.searchParams.has('token')) {
+                    urlObj.searchParams.set('token', token);
+                }
+                return urlObj.toString();
+            }
+        }
+
+        // Breadcrumbs Component
+        const BreadcrumbsComponent = {
+            props: ['currentPath'],
+            computed: {
+                breadcrumbs() {
+                    if (!this.currentPath) return [{ name: 'Project Root', url: '/v2/files' }];
+                    
+                    const parts = this.currentPath.split('/').filter(part => part);
+                    const breadcrumbs = [{ name: 'Project Root', url: '/v2/files' }];
+                    let buildPath = '';
+                    
+                    for (const part of parts) {
+                        buildPath = buildPath ? buildPath + '/' + part : part;
+                        breadcrumbs.push({
+                            name: part,
+                            url: `/v2/files?path=${encodeURIComponent(buildPath)}`
+                        });
+                    }
+                    
+                    return breadcrumbs;
+                }
+            },
+            template: `
+                <div class="breadcrumbs">
+                    <template v-for="(crumb, index) in breadcrumbs" :key="index">
+                        <a :href="crumb.url">{{ crumb.name }}</a>
+                        <span v-if="index < breadcrumbs.length - 1"> / </span>
+                    </template>
+                </div>
+            `
+        };
+
+        // File Browser Component
+        const FileBrowserVue = {
+            props: ['directories', 'files'],
+            data() {
+                return {
+                    loading: false
+                };
+            },
+            methods: {
+                getFileIcon(filename) {
+                    const ext = filename.split('.').pop().toLowerCase();
+                    const iconMap = {
+                        'js': '📄', 'json': '📄', 'md': '📝', 'txt': '📄',
+                        'html': '🌐', 'css': '🎨', 'png': '🖼️', 'jpg': '🖼️',
+                        'jpeg': '🖼️', 'gif': '🖼️', 'pdf': '📕', 'zip': '📦',
+                        'log': '📊', 'yml': '⚙️', 'yaml': '⚙️', 'xml': '📄'
+                    };
+                    return iconMap[ext] || '📄';
+                },
+                enhanceUrl(url) {
+                    const tokenManager = new TokenManager();
+                    return tokenManager.addTokenToUrl(url);
+                }
+            },
+            template: `
+                <div>
+                    <div v-if="loading" class="loading">
+                        Loading files...
+                    </div>
+                    
+                    <table v-else class="file-list">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Size</th>
+                                <th>Modified</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="dir in directories" :key="dir.path" class="file-row">
+                                <td>
+                                    <div class="file-item">
+                                        <span class="file-icon">📁</span>
+                                        <a :href="enhanceUrl('/v2/files?path=' + encodeURIComponent(dir.path))" 
+                                           class="file-name directory">{{ dir.name }}/</a>
+                                    </div>
+                                </td>
+                                <td>{{ dir.size }}</td>
+                                <td>{{ dir.modified }}</td>
+                            </tr>
+                            <tr v-for="file in files" :key="file.path" class="file-row">
+                                <td>
+                                    <div class="file-item">
+                                        <span class="file-icon">{{ getFileIcon(file.name) }}</span>
+                                        <a :href="enhanceUrl('/v2/files/view?path=' + encodeURIComponent(file.path))" 
+                                           class="file-name">{{ file.name }}</a>
+                                    </div>
+                                </td>
+                                <td>{{ file.size }}</td>
+                                <td>{{ file.modified }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `
+        };
+
+        // Vue App
+        const { createApp } = Vue;
+        createApp({
+            components: {
+                'breadcrumbs-component': BreadcrumbsComponent,
+                'file-browser-vue': FileBrowserVue
+            },
+            mounted() {
+                // Initialize token management
+                new TokenManager();
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

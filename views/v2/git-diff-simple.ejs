@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Git Diff - Vue Version</title>
+    
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            margin: 0; padding: 10px; background: #f5f5f5; 
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
+        .back-link:hover { color: #007cba; background: #e9ecef; }
+        .vue-badge {
+            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
+            font-weight: 600; margin-left: 10px;
+        }
+        .debug-info {
+            background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;
+            border-left: 4px solid #4FC08D; font-family: monospace; font-size: 14px;
+        }
+        .file-list { border-collapse: collapse; width: 100%; }
+        .file-list th, .file-list td { padding: 12px; text-align: left; border-bottom: 1px solid #e1e1e1; }
+        .file-list th { background: #f8f9fa; font-weight: 600; }
+        .empty-state { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <a href="/v2" class="back-link">← Vue Home</a>
+            <h1>🔍 Git Diff Viewer <span class="vue-badge">Vue.js</span></h1>
+        </div>
+        
+        <div class="debug-info">
+            <strong>🔧 Debug Info:</strong><br>
+            Changed Files: <%= files.length %> | Status: Working
+        </div>
+        
+        <% if (files.length === 0) { %>
+            <div class="empty-state">
+                <h3>✅ No Changes</h3>
+                <p>Working directory is clean</p>
+            </div>
+        <% } else { %>
+            <table class="file-list">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Status</th>
+                        <th>Change Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% files.forEach(file => { %>
+                        <tr>
+                            <td>
+                                <span style="margin-right: 10px;"><%= file.icon %></span>
+                                <a href="/v2/git/diff?file=<%= encodeURIComponent(file.path) %>"><%= file.path %></a>
+                            </td>
+                            <td><%= file.status %></td>
+                            <td><%= file.changeType %></td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        <% } %>
+    </div>
+</body>
+</html>
