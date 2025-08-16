@@ -6,7 +6,7 @@
 const WebServerSecurity = require('./WebServerSecurity');
 const BaseWebServer = require('./BaseWebServer');
 const SimpleStatusPage = require('./examples/SimpleStatusPage');
-const FileBrowserServer = require('./FileBrowserServer');
+const UnifiedWebServer = require('./UnifiedWebServer');
 
 async function runSecurityTests() {
     console.log('🔒 Starting Security System Integration Tests...\n');
@@ -63,25 +63,25 @@ async function runSecurityTests() {
         test('SimpleStatusPage security integration', statusPage.security === security);
         test('SimpleStatusPage secure URL works', statusPage.getSecureUrl('/system').includes('token='));
 
-        // Test 4: FileBrowserServer Integration
-        console.log('\n📋 Test Group: FileBrowserServer Integration');
-        const fileBrowser = new FileBrowserServer(process.cwd(), 'test-bot', null, security);
-        servers.push(fileBrowser);
+        // Test 4: UnifiedWebServer Integration
+        console.log('\n📋 Test Group: UnifiedWebServer Integration');
+        const unifiedServer = new UnifiedWebServer(process.cwd(), 'test-bot', security);
+        servers.push(unifiedServer);
 
-        test('FileBrowserServer uses provided security', fileBrowser.security === security);
-        test('FileBrowserServer secure URL generation', fileBrowser.security.secureUrl('/view').includes('token='));
+        test('UnifiedWebServer uses provided security', unifiedServer.security === security);
+        test('UnifiedWebServer secure URL generation', unifiedServer.security.secureUrl('/files').includes('token='));
 
         // Test 5: Cross-Server Consistency
         console.log('\n📋 Test Group: Cross-Server Token Consistency');
         const token1 = baseServer.security.getToken();
         const token2 = statusPage.security.getToken();
-        const token3 = fileBrowser.security.getToken();
+        const token3 = unifiedServer.security.getToken();
 
         test('All servers use same token', token1 === token2 && token2 === token3);
         
         const url1 = baseServer.security.secureUrl('/test');
         const url2 = statusPage.security.secureUrl('/test');
-        const url3 = fileBrowser.security.secureUrl('/test');
+        const url3 = unifiedServer.security.secureUrl('/test');
         
         test('Consistent URL generation across servers', url1 === url2 && url2 === url3);
 
@@ -97,7 +97,7 @@ async function runSecurityTests() {
         test('All servers use regenerated token', 
             baseServer.security.getToken() === newToken &&
             statusPage.security.getToken() === newToken &&
-            fileBrowser.security.getToken() === newToken
+            unifiedServer.security.getToken() === newToken
         );
 
         // Test 7: Security Info

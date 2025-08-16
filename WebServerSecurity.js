@@ -34,7 +34,8 @@ class WebServerSecurity {
                 return next();
             }
 
-            const providedToken = req.query.token;
+            // Check for token in URL parameter or cookie
+            const providedToken = req.query.token || this.getTokenFromCookies(req);
             const isValidToken = providedToken === this.securityToken;
 
             if (!isValidToken) {
@@ -89,6 +90,23 @@ class WebServerSecurity {
         this.securityToken = this.generateSecurityToken();
         console.log(`[${this.botInstance}] 🔄 Security token regenerated (old: ${oldToken.slice(0, 8)}..., new: ${this.securityToken.slice(0, 8)}...)`);
         return this.securityToken;
+    }
+
+    /**
+     * Extract auth_token from request cookies
+     * Simple cookie parser that doesn't require external dependencies
+     */
+    getTokenFromCookies(req) {
+        const cookieHeader = req.headers.cookie;
+        if (!cookieHeader) return null;
+
+        const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+            const [name, value] = cookie.trim().split('=');
+            acc[name] = value;
+            return acc;
+        }, {});
+
+        return cookies.auth_token || null;
     }
 
     /**
@@ -202,16 +220,16 @@ class WebServerSecurity {
         </div>
         
         <div class="instructions">
-            <p>If you're the authorized user:</p>
+            <p>If you have access authorization:</p>
             <ol style="text-align: left; margin: 16px 0; padding-left: 20px;">
-                <li>Use the official Telegram bot to get secure access links</li>
-                <li>Run the <span class="code">/files</span> command to access the file browser</li>
-                <li>Access other mini-apps through official bot commands</li>
+                <li>Contact the system administrator for authorized access</li>
+                <li>Use official channels to obtain valid authentication tokens</li>
+                <li>Ensure you have proper credentials before accessing resources</li>
             </ol>
         </div>
         
         <div class="footer">
-            <p>🤖 Powered by Telegram Bot Security System</p>
+            <p>🔐 Secure Web Application</p>
         </div>
     </div>
 </body>

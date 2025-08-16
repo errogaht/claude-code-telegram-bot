@@ -811,10 +811,10 @@ class SessionManager {
     // Clear current session ID from both memory and config file to force new session
     await this.clearStoredSession(userId);
     
-    // IMPORTANT: Reset thinking mode to 'auto' for new sessions
-    // This ensures fresh sessions start with default thinking mode
-    console.log(`[User ${userId}] Resetting thinking mode to 'auto' for new session`);
-    this.mainBot.storeUserThinkingMode(userId, 'auto');
+    // IMPORTANT: Preserve user's thinking mode preference across sessions
+    // The thinking mode should persist unless explicitly changed by the user
+    const currentThinkingMode = this.getUserThinkingMode(userId);
+    console.log(`[User ${userId}] Preserving thinking mode '${currentThinkingMode}' for new session`);
     
     // Create new session
     const session = await this.createUserSession(userId, chatId);

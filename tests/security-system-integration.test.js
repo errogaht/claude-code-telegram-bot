@@ -1,14 +1,14 @@
 const request = require('supertest');
 const WebServerSecurity = require('../WebServerSecurity');
 const BaseWebServer = require('../BaseWebServer');
-const FileBrowserServer = require('../FileBrowserServer');
+const UnifiedWebServer = require('../UnifiedWebServer');
 const SimpleStatusPage = require('../examples/SimpleStatusPage');
 
 describe('Security System Integration Tests', () => {
     let security;
     let baseServer;
     let statusPage;
-    let fileBrowser;
+    let unifiedServer;
     const testBotInstance = 'test-bot';
 
     beforeAll(() => {
@@ -24,8 +24,8 @@ describe('Security System Integration Tests', () => {
         if (statusPage && statusPage.server) {
             await statusPage.stop();
         }
-        if (fileBrowser && fileBrowser.server) {
-            await fileBrowser.stop();
+        if (unifiedServer && unifiedServer.server) {
+            await unifiedServer.stop();
         }
     });
 
@@ -187,37 +187,37 @@ describe('Security System Integration Tests', () => {
         });
     });
 
-    describe('FileBrowserServer Security Integration', () => {
+    describe('UnifiedWebServer Security Integration', () => {
         beforeAll(() => {
             // Use current working directory as project root for testing
-            fileBrowser = new FileBrowserServer(process.cwd(), testBotInstance, null, security);
+            unifiedServer = new UnifiedWebServer(process.cwd(), testBotInstance, security);
         });
 
-        test('should protect file browser main page', async () => {
+        test('should protect unified server main page', async () => {
             // Without token
-            await request(fileBrowser.app)
+            await request(unifiedServer.app)
                 .get('/')
                 .expect(403);
 
             // With valid token
-            const response = await request(fileBrowser.app)
+            const response = await request(unifiedServer.app)
                 .get('/')
                 .query({ token: security.getToken() })
                 .expect(200);
 
-            expect(response.text).toContain('Project File Browser');
+            expect(response.text).toContain('Development Tools');
         });
 
         test('should protect file viewer', async () => {
             // Without token
-            await request(fileBrowser.app)
-                .get('/view')
+            await request(unifiedServer.app)
+                .get('/files/view')
                 .query({ path: 'package.json' })
                 .expect(403);
 
             // With valid token (but invalid path to test security, not file system)
-            const response = await request(fileBrowser.app)
-                .get('/view')
+            const response = await request(unifiedServer.app)
+                .get('/files/view')
                 .query({ 
                     token: security.getToken(),
                     path: 'package.json'
@@ -229,7 +229,7 @@ describe('Security System Integration Tests', () => {
 
         test('should allow static assets without token', async () => {
             // Static assets should bypass token validation
-            await request(fileBrowser.app)
+            await request(unifiedServer.app)
                 .get('/static/nonexistent.css')
                 .expect(404); // File not found, but security didn't block it
         });
@@ -239,7 +239,7 @@ describe('Security System Integration Tests', () => {
         test('should use same token across different server types', () => {
             const token1 = baseServer.security.getToken();
             const token2 = statusPage.security.getToken();
-            const token3 = fileBrowser.security.getToken();
+            const token3 = unifiedServer.security.getToken();
             
             // All should use the same token since we passed the same security instance
             expect(token1).toBe(token2);
@@ -252,7 +252,7 @@ describe('Security System Integration Tests', () => {
             
             const url1 = baseServer.security.secureUrl(path, params);
             const url2 = statusPage.security.secureUrl(path, params);
-            const url3 = fileBrowser.security.secureUrl(path, params);
+            const url3 = unifiedServer.security.secureUrl(path, params);
             
             expect(url1).toBe(url2);
             expect(url2).toBe(url3);
@@ -262,10 +262,10 @@ describe('Security System Integration Tests', () => {
             // Test error page consistency across different server types
             const baseResponse = await request(baseServer.app).get('/').expect(403);
             const statusResponse = await request(statusPage.app).get('/').expect(403);
-            const browserResponse = await request(fileBrowser.app).get('/').expect(403);
+            const unifiedResponse = await request(unifiedServer.app).get('/').expect(403);
             
             // All should contain the same security error elements
-            [baseResponse, statusResponse, browserResponse].forEach(response => {
+            [baseResponse, statusResponse, unifiedResponse].forEach(response => {
                 expect(response.text).toContain('Access Denied');
                 expect(response.text).toContain('security token required');
                 expect(response.text).toContain('🔒');

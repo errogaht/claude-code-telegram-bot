@@ -15,8 +15,7 @@ const GitManager = require('./GitManager');
 const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
 const CommandsHandler = require('./CommandsHandler');
-const FileBrowserServer = require('./FileBrowserServer');
-const GitDiffServer = require('./GitDiffServer');
+const UnifiedWebServer = require('./UnifiedWebServer');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -73,20 +72,16 @@ class StreamTelegramBot {
     // Image message handler
     this.imageHandler = new ImageHandler(this.bot, this.sessionManager, this.activityIndicator, this);
     
-    // File browser server with ngrok integration
-    const ngrokToken = this.getNgrokTokenFromConfig();
-    this.fileBrowserServer = new FileBrowserServer(this.options.workingDirectory, this.botInstanceName, ngrokToken);
-    this.fileBrowserUrl = null;
+    // Unified web server with QTunnel WebSocket tunneling (replaces separate file browser and git diff servers)
+    // TO DISABLE: Change to { disabled: true }
+    this.unifiedWebServer = new UnifiedWebServer(this.options.workingDirectory, this.botInstanceName, null, { 
+      disabled: false, 
+      qTunnelToken: this.getQTunnelTokenFromConfig()
+    });
+    this.webServerUrl = null;
     
-    // Git diff server with ngrok integration
-    this.gitDiffServer = new GitDiffServer(this.options.workingDirectory, this.botInstanceName, ngrokToken);
-    this.gitDiffUrl = null;
-    
-    // Auto-start file browser in background (non-blocking)
-    this.autoStartFileBrowser();
-    
-    // Auto-start git diff server in background (now with smart port resolution)
-    this.autoStartGitDiffServer();
+    // Auto-start unified web server in background (non-blocking)
+    this.autoStartUnifiedWebServer();
     
     // Thinking levels configuration (from claudia)
     this.thinkingModes = [
@@ -136,6 +131,9 @@ class StreamTelegramBot {
     
     // Restore last session from config file
     this.restoreLastSessionOnStartup();
+    
+    // Load thinking mode from config file
+    this.loadThinkingModeFromConfig();
     
     console.log('🤖 Stream Telegram Bot started');
     
@@ -355,7 +353,7 @@ class StreamTelegramBot {
             console.log(`[COMPONENT] Commands callback not handled: "${data}", chatId: ${chatId}`);
           }
         } else if (data.startsWith('files:')) {
-          console.log(`[COMPONENT] FileBrowserServer.handleFileBrowserCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          console.log(`[COMPONENT] UnifiedWebServer.handleFileBrowserCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
           await this.handleFileBrowserCallback(query);
         } else if (data.startsWith('main_menu:')) {
           console.log(`[COMPONENT] StreamTelegramBot.handleMainMenuCallback - data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
@@ -681,6 +679,28 @@ class StreamTelegramBot {
       this.userPreferences = new Map();
     }
     this.userPreferences.set(`${userId}_thinking`, thinkingMode);
+    
+    // Persist to config file
+    if (!this.configFilePath) {
+      console.warn('[Bot] No config file path provided, cannot store user thinking mode');
+      return;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      // Store thinking mode in config
+      config.thinkingMode = thinkingMode;
+      
+      // Write back to file
+      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      
+      console.log(`[Bot] Stored thinking mode ${thinkingMode} for bot config`);
+    } catch (error) {
+      console.error('[Bot] Error storing thinking mode:', error.message);
+    }
   }
 
   /**
@@ -799,10 +819,35 @@ class StreamTelegramBot {
    */
 
   getUserThinkingMode(userId) {
-    if (!this.userPreferences) {
-      return 'auto';
+    // First check memory cache
+    if (this.userPreferences) {
+      const cachedMode = this.userPreferences.get(`${userId}_thinking`);
+      if (cachedMode) {
+        return cachedMode;
+      }
     }
-    return this.userPreferences.get(`${userId}_thinking`) || 'auto';
+    
+    // Then check config file
+    if (this.configFilePath) {
+      try {
+        const fs = require('fs');
+        const configData = fs.readFileSync(this.configFilePath, 'utf8');
+        const config = JSON.parse(configData);
+        
+        if (config.thinkingMode) {
+          // Cache in memory for faster access
+          if (!this.userPreferences) {
+            this.userPreferences = new Map();
+          }
+          this.userPreferences.set(`${userId}_thinking`, config.thinkingMode);
+          return config.thinkingMode;
+        }
+      } catch (error) {
+        console.error('[Bot] Error loading thinking mode from config:', error.message);
+      }
+    }
+    
+    return 'auto';
   }
 
   /**
@@ -1386,6 +1431,44 @@ class StreamTelegramBot {
   }
 
   /**
+   * Load thinking mode from config file on startup
+   */
+  loadThinkingModeFromConfig() {
+    if (!this.configFilePath) {
+      console.log('💡 [Startup] No config file path, using default thinking mode');
+      return;
+    }
+    
+    try {
+      const fs = require('fs');
+      const configData = fs.readFileSync(this.configFilePath, 'utf8');
+      const config = JSON.parse(configData);
+      
+      if (config.thinkingMode) {
+        // Initialize user preferences map if needed
+        if (!this.userPreferences) {
+          this.userPreferences = new Map();
+        }
+        
+        // Store thinking mode globally - will be applied when admin user is known
+        this.configThinkingMode = config.thinkingMode;
+        
+        // If admin user is already known, apply immediately
+        if (this.adminUserId) {
+          this.userPreferences.set(`${this.adminUserId}_thinking`, config.thinkingMode);
+          console.log(`🧠 [Startup] Loaded thinking mode: ${config.thinkingMode} for user ${this.adminUserId}`);
+        } else {
+          console.log(`🧠 [Startup] Thinking mode in config: ${config.thinkingMode}, will apply when admin user is set`);
+        }
+      } else {
+        console.log('💡 [Startup] No thinking mode found in config, using default (auto)');
+      }
+    } catch (error) {
+      console.error('⚠️ [Startup] Failed to load thinking mode from config:', error.message);
+    }
+  }
+
+  /**
    * Check admin access and handle authorization
    */
   checkAdminAccess(userId, chatId) {
@@ -1397,6 +1480,15 @@ class StreamTelegramBot {
       
       // Save admin ID to config file
       this.saveAdminToConfig(userId);
+      
+      // Apply thinking mode from config if available
+      if (this.configThinkingMode) {
+        if (!this.userPreferences) {
+          this.userPreferences = new Map();
+        }
+        this.userPreferences.set(`${userId}_thinking`, this.configThinkingMode);
+        console.log(`🧠 [Admin Setup] Applied thinking mode from config: ${this.configThinkingMode} for user ${userId}`);
+      }
       
       // Send welcome message asynchronously to avoid blocking
       setImmediate(() => {
@@ -1437,10 +1529,10 @@ class StreamTelegramBot {
       console.log(`[Admin] User ${userId} initiated bot restart`);
       
       // Send restart confirmation message
-      const fileBrowserStatus = this.fileBrowserUrl ? '\n🌐 File browser will also restart' : '';
+      const webServerStatus = this.webServerUrl ? '\n🌐 Dev tools server will also restart' : '';
       await this.safeSendMessage(chatId, 
         '🔄 **Bot Restart Initiated**\n\n' +
-        `⏳ Restarting ${this.botInstanceName} process...${fileBrowserStatus}\n` +
+        `⏳ Restarting ${this.botInstanceName} process...${webServerStatus}\n` +
         '🚀 Bot will be back online shortly!'
       );
       
@@ -1589,23 +1681,13 @@ class StreamTelegramBot {
       console.log('\n📦 Bot shutting down - cleaning up...');
       this.activityIndicator.cleanup();
       
-      // Stop file browser server if running
-      if (this.fileBrowserUrl) {
-        console.log('🌐 Stopping file browser server...');
+      // Stop unified web server if running
+      if (this.webServerUrl) {
+        console.log('🌐 Stopping unified web server...');
         try {
-          await this.stopFileBrowser();
+          await this.stopUnifiedWebServer();
         } catch (error) {
-          console.error('Error stopping file browser:', error);
-        }
-      }
-      
-      // Stop git diff server if running
-      if (this.gitDiffUrl) {
-        console.log('🔍 Stopping git diff server...');
-        try {
-          await this.stopGitDiffServer();
-        } catch (error) {
-          console.error('Error stopping git diff server:', error);
+          console.error('Error stopping unified web server:', error);
         }
       }
       
@@ -1616,18 +1698,11 @@ class StreamTelegramBot {
     process.on('SIGTERM', cleanup);
     process.on('exit', async () => {
       this.activityIndicator.cleanup();
-      if (this.fileBrowserUrl) {
+      if (this.webServerUrl) {
         try {
-          await this.stopFileBrowser();
+          await this.stopUnifiedWebServer();
         } catch (error) {
-          console.error('Error stopping file browser on exit:', error);
-        }
-      }
-      if (this.gitDiffUrl) {
-        try {
-          await this.stopGitDiffServer();
-        } catch (error) {
-          console.error('Error stopping git diff server on exit:', error);
+          console.error('Error stopping unified web server on exit:', error);
         }
       }
     });
@@ -1810,85 +1885,43 @@ class StreamTelegramBot {
   }
 
   /**
-   * Start file browser server with ngrok tunnel
+   * Start unified web server with LocalTunnel
    */
-  async startFileBrowser() {
+  async startUnifiedWebServer() {
     try {
-      if (this.fileBrowserUrl) {
-        return this.fileBrowserUrl; // Already running
+      if (this.webServerUrl) {
+        return this.webServerUrl; // Already running
       }
 
-      console.log('Starting file browser server...');
-      await this.fileBrowserServer.start();
+      console.log('Starting unified web server...');
+      const url = await this.unifiedWebServer.start();
       
       // Get secure URL with token for external access
-      this.fileBrowserUrl = this.fileBrowserServer.getSecurePublicUrl();
-      console.log(`✅ File browser available at: ${this.fileBrowserUrl}`);
+      this.webServerUrl = this.unifiedWebServer.getSecurePublicUrl();
+      console.log(`✅ Unified web server available at: ${this.webServerUrl}`);
       console.log(`🔐 URL includes security token for protected access`);
-      return this.fileBrowserUrl;
+      return this.webServerUrl;
     } catch (error) {
-      console.error('Failed to start file browser:', error);
+      console.error('Failed to start unified web server:', error);
       throw error;
     }
   }
 
   /**
-   * Stop file browser server and close ngrok tunnel
+   * Stop unified web server and close LocalTunnel
    */
-  async stopFileBrowser() {
+  async stopUnifiedWebServer() {
     try {
-      if (!this.fileBrowserUrl) {
+      if (!this.webServerUrl) {
         return; // Already stopped
       }
 
-      console.log('Stopping file browser server...');
-      await this.fileBrowserServer.stop();
-      this.fileBrowserUrl = null;
-      console.log('✅ File browser stopped');
+      console.log('Stopping unified web server...');
+      await this.unifiedWebServer.stop();
+      this.webServerUrl = null;
+      console.log('✅ Unified web server stopped');
     } catch (error) {
-      console.error('Failed to stop file browser:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Start git diff server with ngrok tunnel
-   */
-  async startGitDiffServer() {
-    try {
-      if (this.gitDiffUrl) {
-        return this.gitDiffUrl; // Already running
-      }
-
-      console.log('Starting git diff server...');
-      await this.gitDiffServer.start();
-      
-      // Get secure URL with token for external access
-      this.gitDiffUrl = this.gitDiffServer.getSecurePublicUrl();
-      console.log(`✅ Git diff server available at: ${this.gitDiffUrl}`);
-      console.log(`🔐 URL includes security token for protected access`);
-      return this.gitDiffUrl;
-    } catch (error) {
-      console.error('Failed to start git diff server:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Stop git diff server and close ngrok tunnel
-   */
-  async stopGitDiffServer() {
-    try {
-      if (!this.gitDiffUrl) {
-        return; // Already stopped
-      }
-
-      console.log('Stopping git diff server...');
-      await this.gitDiffServer.stop();
-      this.gitDiffUrl = null;
-      console.log('✅ Git diff server stopped');
-    } catch (error) {
-      console.error('Failed to stop git diff server:', error);
+      console.error('Failed to stop unified web server:', error);
       throw error;
     }
   }
@@ -1898,23 +1931,23 @@ class StreamTelegramBot {
    */
   async handleFilesCommand(chatId) {
     try {
-      // Start file browser if not already running
-      const url = await this.startFileBrowser();
+      // Start unified web server if not already running
+      const secureUrl = await this.startUnifiedWebServer();
       
-      const isLocalOnly = url.includes('localhost');
+      // Check if using local access (LocalTunnel failed) 
+      const isLocalOnly = secureUrl && secureUrl.includes('localhost');
       const accessType = isLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
       const statusIcon = isLocalOnly ? '🏠' : '🌐';
       const buttonText = isLocalOnly ? '🏠 Open Locally' : '🌐 Open File Browser';
       
-      // Get secure URL with token for Mini App button
-      const secureUrl = isLocalOnly ? url : this.fileBrowserServer.getSecurePublicUrl();
+      // secureUrl already contains the security token from startUnifiedWebServer
       
       const ngrokTip = isLocalOnly ? 
         `🔧 **Setup Remote Access:** Set NGROK_AUTHTOKEN environment variable` : 
         `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass ngrok warning banner`;
       
       const message = `${statusIcon} **File Browser Available**\n\n` +
-        `📁 Browse project files at:\n${url}\n\n` +
+        `📁 Browse project files at:\n${secureUrl}\n\n` +
         `📍 **Access Type:** ${accessType}\n\n` +
         `${ngrokTip}\n\n` +
         `🔧 **Features:**\n` +
@@ -1962,9 +1995,9 @@ class StreamTelegramBot {
     try {
       switch (action) {
         case 'stop':
-          await this.stopFileBrowser();
+          await this.stopUnifiedWebServer();
           await this.bot.editMessageText(
-            '✅ File browser server stopped',
+            '✅ Dev tools server stopped',
             {
               chat_id: chatId,
               message_id: query.message.message_id,
@@ -1978,13 +2011,13 @@ class StreamTelegramBot {
           break;
 
         case 'start':
-          const url = await this.startFileBrowser();
-          const isUrlLocalOnly = url.includes('localhost');
+          const secureUrl = await this.startUnifiedWebServer();
+          const isUrlLocalOnly = secureUrl && secureUrl.includes('localhost');
           const accessType = isUrlLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
           const statusIcon = isUrlLocalOnly ? '🏠' : '🌐';
           
           const message = `${statusIcon} **File Browser Restarted**\n\n` +
-            `📁 Browse project files at:\n${url}\n` +
+            `📁 Browse project files at:\n${secureUrl}\n` +
             `📍 Access: ${accessType}\n\n` +
             (isUrlLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
           
@@ -1994,9 +2027,8 @@ class StreamTelegramBot {
           
           // Only add Mini App button if it's publicly accessible (not localhost)
           if (!isUrlLocalOnly) {
-            const startSecureUrl = this.fileBrowserServer.getSecurePublicUrl();
             replyMarkup.inline_keyboard.push([
-              { text: '🌐 Open File Browser', web_app: { url: startSecureUrl } },
+              { text: '🌐 Open File Browser', web_app: { url: secureUrl } },
               { text: '❌ Stop Server', callback_data: 'files:stop' }
             ]);
           } else {
@@ -2014,13 +2046,13 @@ class StreamTelegramBot {
           break;
 
         case 'refresh':
-          if (this.fileBrowserUrl) {
-            const isRefreshLocalOnly = this.fileBrowserUrl.includes('localhost');
+          if (this.webServerUrl) {
+            const isRefreshLocalOnly = this.webServerUrl.includes('localhost');
             const refreshAccessType = isRefreshLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
             const refreshStatusIcon = isRefreshLocalOnly ? '🏠' : '🌐';
             
-            const refreshMessage = `${refreshStatusIcon} **Current File Browser URL**\n\n` +
-              `📁 ${this.fileBrowserUrl}\n` +
+            const refreshMessage = `${refreshStatusIcon} **Current Dev Tools URL**\n\n` +
+              `📁 ${this.webServerUrl}\n` +
               `📍 Access: ${refreshAccessType}\n\n` +
               (isRefreshLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
             
@@ -2030,9 +2062,8 @@ class StreamTelegramBot {
             
             // Only add Mini App button if it's publicly accessible (not localhost)
             if (!isRefreshLocalOnly) {
-              const refreshSecureUrl = this.fileBrowserServer.getSecurePublicUrl();
               refreshReplyMarkup.inline_keyboard.push([
-                { text: '🌐 Open File Browser', web_app: { url: refreshSecureUrl } },
+                { text: '🚀 Open Dev Tools', web_app: { url: this.webServerUrl } },
                 { text: '❌ Stop Server', callback_data: 'files:stop' }
               ]);
             } else {
@@ -2075,60 +2106,33 @@ class StreamTelegramBot {
   }
 
   /**
-   * Auto-start file browser in background (non-blocking)
+   * Auto-start unified web server in background (non-blocking)
    */
-  autoStartFileBrowser() {
+  autoStartUnifiedWebServer() {
     // Start in background without blocking bot initialization
     setImmediate(async () => {
       try {
-        console.log(`[${this.botInstanceName}] Auto-starting file browser server...`);
-        this.fileBrowserUrl = await this.fileBrowserServer.start();
+        console.log(`[${this.botInstanceName}] Auto-starting unified web server...`);
+        this.webServerUrl = await this.unifiedWebServer.start();
         
-        if (this.fileBrowserUrl) {
-          console.log(`[${this.botInstanceName}] ✅ File browser auto-started: ${this.fileBrowserUrl}`);
+        if (this.webServerUrl) {
+          console.log(`[${this.botInstanceName}] ✅ Unified web server auto-started: ${this.webServerUrl}`);
           
-          // Only send notification if ngrok public URL (not localhost)
-          const isPublicAccess = !this.fileBrowserUrl.includes('localhost');
+          // Only send notification if public URL (not localhost)
+          const isPublicAccess = !this.webServerUrl.includes('localhost');
           if (this.adminUserId && isPublicAccess) {
             console.log(`[${this.botInstanceName}] 📤 Public URL available, sending notification...`);
-            await this.notifyFileBrowserReady();
+            await this.notifyWebServerReady();
           } else if (this.adminUserId && !isPublicAccess) {
             console.log(`[${this.botInstanceName}] 🏠 Local access only, skipping auto-notification`);
           }
         }
       } catch (error) {
-        console.error(`[${this.botInstanceName}] ❌ File browser auto-start failed:`, error);
+        console.error(`[${this.botInstanceName}] ❌ Unified web server auto-start failed:`, error);
         
-        // For ngrok auth token errors, provide helpful message
-        if (error.message?.includes('authtoken') || error.message?.includes('authentication')) {
-          console.log(`[${this.botInstanceName}] 💡 Tip: Set NGROK_AUTHTOKEN environment variable for remote access`);
-        }
-      }
-    });
-  }
-
-  /**
-   * Auto-start git diff server in background (non-blocking)
-   */
-  autoStartGitDiffServer() {
-    // Start in background without blocking bot initialization
-    setImmediate(async () => {
-      try {
-        console.log(`[${this.botInstanceName}] Auto-starting git diff server...`);
-        this.gitDiffUrl = await this.gitDiffServer.start();
-        
-        if (this.gitDiffUrl) {
-          console.log(`[${this.botInstanceName}] ✅ Git diff server auto-started: ${this.gitDiffUrl}`);
-          
-          // Note: We don't send auto-notification for git diff server to avoid spam
-          // Users can access it via the main menu button
-        }
-      } catch (error) {
-        console.error(`[${this.botInstanceName}] ❌ Git diff server auto-start failed:`, error);
-        
-        // For ngrok auth token errors, provide helpful message
-        if (error.message?.includes('authtoken') || error.message?.includes('authentication')) {
-          console.log(`[${this.botInstanceName}] 💡 Tip: Set NGROK_AUTHTOKEN environment variable for remote access`);
+        // For LocalTunnel errors, provide helpful message
+        if (error.message?.includes('localtunnel') || error.message?.includes('tunnel')) {
+          console.log(`[${this.botInstanceName}] 💡 Tip: LocalTunnel connection failed, using local access only`);
         }
       }
     });
@@ -2145,31 +2149,20 @@ class StreamTelegramBot {
     // Row 1: Core Functions
     const row1 = [];
     
-    // Files button - always available (user requested this)
-    if (!isLocalOnly) {
-      const secureUrl = this.fileBrowserServer.getSecurePublicUrl();
+    // Development Tools button - unified web server with files and git
+    if (!isLocalOnly && this.webServerUrl) {
+      const secureUrl = this.unifiedWebServer.getSecurePublicUrl();
       if (secureUrl) {
-        row1.push({ text: '📁 Files', web_app: { url: secureUrl } });
+        row1.push({ text: '🚀 Dev Tools', web_app: { url: secureUrl } });
       } else {
-        row1.push({ text: '📁 Files', callback_data: 'main_menu:files' });
+        row1.push({ text: '🚀 Dev Tools', callback_data: 'main_menu:files' });
       }
     } else {
-      row1.push({ text: '📁 Files', callback_data: 'main_menu:files' });
+      row1.push({ text: '🚀 Dev Tools', callback_data: 'main_menu:files' });
     }
     
     row1.push({ text: '📂 Projects', callback_data: 'main_menu:projects' });
-    
-    // Git button - show git diff viewer if available, otherwise show git status
-    if (!isLocalOnly && this.gitDiffUrl) {
-      const gitSecureUrl = this.gitDiffServer.getSecurePublicUrl();
-      if (gitSecureUrl) {
-        row1.push({ text: '🔍 Git', web_app: { url: gitSecureUrl } });
-      } else {
-        row1.push({ text: '🔍 Git', callback_data: 'main_menu:git' });
-      }
-    } else {
-      row1.push({ text: '🔍 Git', callback_data: 'main_menu:git' });
-    }
+    row1.push({ text: '🔍 Git', callback_data: 'main_menu:git' });
     keyboard.inline_keyboard.push(row1);
 
     // Row 2: Session Management
@@ -2203,7 +2196,7 @@ class StreamTelegramBot {
    */
   async showMainMenu(chatId) {
     try {
-      const isServerRunning = this.fileBrowserUrl && !this.fileBrowserUrl.includes('localhost');
+      const isServerRunning = this.webServerUrl && !this.webServerUrl.includes('localhost');
       const serverStatus = isServerRunning ? '🌐 Web server running' : '🏠 Local access only';
       
       const message = `🎯 **Main Menu**\n\n` +
@@ -2274,22 +2267,26 @@ class StreamTelegramBot {
   }
 
   /**
-   * Send notification to admin when file browser is ready
+   * Send notification to admin when unified web server is ready
    */
-  async notifyFileBrowserReady() {
+  async notifyWebServerReady() {
     try {
-      console.log(`[${this.botInstanceName}] 📤 Sending file browser ready notification to admin ${this.adminUserId}`);
-      const isLocalOnly = this.fileBrowserUrl.includes('localhost');
+      console.log(`[${this.botInstanceName}] 📤 Sending web server ready notification to admin ${this.adminUserId}`);
+      const isLocalOnly = this.webServerUrl.includes('localhost');
       const accessType = isLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
       const statusIcon = isLocalOnly ? '🏠' : '🌐';
       
-      const message = `${statusIcon} **${this.botInstanceName.toUpperCase()} - Web Server Ready**\n\n` +
-        `🌐 Ngrok tunnel and HTTP server started successfully!\n` +
-        `🔗 Base URL: ${this.fileBrowserUrl}\n` +
+      // Get secure URL with token for notification
+      const secureUrl = this.unifiedWebServer.getSecurePublicUrl() || this.webServerUrl;
+      
+      const message = `${statusIcon} **${this.botInstanceName.toUpperCase()} - Dev Tools Ready**\n\n` +
+        `🌐 Web server started successfully!\n` +
+        `🔗 Secure URL: ${secureUrl}\n` +
         `📍 Access: ${accessType}\n\n` +
         `🎯 **Available Services:**\n` +
         `• File browser and project explorer\n` +
-        `• Future web applications and tools\n\n` +
+        `• Git diff viewer with syntax highlighting\n` +
+        `• Unified development tools interface\n\n` +
         `💡 Use the menu below to access all features` +
         (isLocalOnly ? '\n\n🔧 Set NGROK_AUTHTOKEN for remote access' : '');
 
@@ -2306,39 +2303,29 @@ class StreamTelegramBot {
   }
 
   /**
-   * Get ngrok token from bot config file
+   * Get QTunnel token from bot config file
    */
-  getNgrokTokenFromConfig() {
-    console.log(`[${this.botInstanceName}] DEBUG: getNgrokTokenFromConfig() called`);
-    console.log(`[${this.botInstanceName}] DEBUG: configFilePath = "${this.configFilePath}"`);
-    
+  getQTunnelTokenFromConfig() {
     if (!this.configFilePath) {
-      console.warn(`[${this.botInstanceName}] No config file path, using environment variable for ngrok token`);
-      return process.env.NGROK_AUTHTOKEN;
+      console.warn(`[${this.botInstanceName}] No config file path, QTunnel token unavailable`);
+      return null;
     }
     
     try {
       const fs = require('fs');
-      console.log(`[${this.botInstanceName}] DEBUG: Reading config file: ${this.configFilePath}`);
       const configData = fs.readFileSync(this.configFilePath, 'utf8');
       const config = JSON.parse(configData);
       
-      console.log(`[${this.botInstanceName}] DEBUG: Config loaded, checking for ngrokAuthToken...`);
-      const token = config.ngrokAuthToken;
-      console.log(`[${this.botInstanceName}] DEBUG: ngrokAuthToken = "${token ? '[PRESENT]' : '[NOT FOUND]'}"`);
+      const token = config.qTunnelToken;
+      console.log(`[${this.botInstanceName}] QTunnel token: ${token ? '[CONFIGURED]' : '[NOT FOUND]'}`);
       
-      if (token) {
-        console.log(`[${this.botInstanceName}] ✅ Loaded ngrok token from config file`);
-        return token;
-      } else {
-        console.log(`[${this.botInstanceName}] ⚠️  No ngrok token in config, using environment variable`);
-        return process.env.NGROK_AUTHTOKEN;
-      }
+      return token || null;
     } catch (error) {
-      console.warn(`[${this.botInstanceName}] ❌ Error reading ngrok token from config:`, error.message);
-      return process.env.NGROK_AUTHTOKEN;
+      console.error(`[${this.botInstanceName}] Error reading config for QTunnel token:`, error.message);
+      return null;
     }
   }
+
 }
 
 // Export for use
