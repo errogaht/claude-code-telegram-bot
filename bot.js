@@ -1932,7 +1932,8 @@ class StreamTelegramBot {
   async handleFilesCommand(chatId) {
     try {
       // Start unified web server if not already running
-      const secureUrl = await this.startUnifiedWebServer();
+      await this.startUnifiedWebServer();
+      const secureUrl = this.unifiedWebServer.getSecurePublicUrl() || this.webServerUrl;
       
       // Check if using local access (LocalTunnel failed) 
       const isLocalOnly = secureUrl && secureUrl.includes('localhost');
@@ -1946,35 +1947,14 @@ class StreamTelegramBot {
         `🔧 **Setup Remote Access:** Set NGROK_AUTHTOKEN environment variable` : 
         `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass ngrok warning banner`;
       
-      const message = `${statusIcon} **File Browser Available**\n\n` +
-        `📁 Browse project files at:\n${secureUrl}\n\n` +
-        `📍 **Access Type:** ${accessType}\n\n` +
-        `${ngrokTip}\n\n` +
-        `🔧 **Features:**\n` +
-        `• Navigate through project directories\n` +
-        `• View file contents with syntax highlighting\n` +
-        `• Mobile-optimized interface\n` +
-        `• Secure access (project directory only)`;
+      const message = `🌐 **Web App Available**\n\n` +
+        `🔗 Access URL:\n${secureUrl}`;
 
       const keyboard = {
-        inline_keyboard: []
+        inline_keyboard: [
+          [{ text: '🌐 Open Web App', web_app: { url: secureUrl } }]
+        ]
       };
-
-      // Only add Mini App button if it's publicly accessible (not localhost)  
-      if (!isLocalOnly) {
-        keyboard.inline_keyboard.push([
-          { text: buttonText, web_app: { url: secureUrl } },
-          { text: '❌ Stop Server', callback_data: 'files:stop' }
-        ]);
-      } else {
-        keyboard.inline_keyboard.push([
-          { text: '❌ Stop Server', callback_data: 'files:stop' }
-        ]);
-      }
-
-      keyboard.inline_keyboard.push([
-        { text: '🔄 Refresh URL', callback_data: 'files:refresh' }
-      ]);
 
       await this.safeSendMessage(chatId, message, {
         reply_markup: keyboard,
@@ -2011,31 +1991,20 @@ class StreamTelegramBot {
           break;
 
         case 'start':
-          const secureUrl = await this.startUnifiedWebServer();
+          await this.startUnifiedWebServer();
+          const secureUrl = this.unifiedWebServer.getSecurePublicUrl() || this.webServerUrl;
           const isUrlLocalOnly = secureUrl && secureUrl.includes('localhost');
           const accessType = isUrlLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
           const statusIcon = isUrlLocalOnly ? '🏠' : '🌐';
           
-          const message = `${statusIcon} **File Browser Restarted**\n\n` +
-            `📁 Browse project files at:\n${secureUrl}\n` +
-            `📍 Access: ${accessType}\n\n` +
-            (isUrlLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
+          const message = `🌐 **Web App Available**\n\n` +
+            `🔗 Access URL:\n${secureUrl}`;
           
           const replyMarkup = {
-            inline_keyboard: []
+            inline_keyboard: [
+              [{ text: '🌐 Open Web App', web_app: { url: secureUrl } }]
+            ]
           };
-          
-          // Only add Mini App button if it's publicly accessible (not localhost)
-          if (!isUrlLocalOnly) {
-            replyMarkup.inline_keyboard.push([
-              { text: '🌐 Open File Browser', web_app: { url: secureUrl } },
-              { text: '❌ Stop Server', callback_data: 'files:stop' }
-            ]);
-          } else {
-            replyMarkup.inline_keyboard.push([
-              { text: '❌ Stop Server', callback_data: 'files:stop' }
-            ]);
-          }
             
           await this.bot.editMessageText(message, {
             chat_id: chatId,
@@ -2047,30 +2016,19 @@ class StreamTelegramBot {
 
         case 'refresh':
           if (this.webServerUrl) {
+            const secureRefreshUrl = this.unifiedWebServer.getSecurePublicUrl() || this.webServerUrl;
             const isRefreshLocalOnly = this.webServerUrl.includes('localhost');
             const refreshAccessType = isRefreshLocalOnly ? '🏠 Local Access Only' : '🌐 Public Access Available';
             const refreshStatusIcon = isRefreshLocalOnly ? '🏠' : '🌐';
             
-            const refreshMessage = `${refreshStatusIcon} **Current Dev Tools URL**\n\n` +
-              `📁 ${this.webServerUrl}\n` +
-              `📍 Access: ${refreshAccessType}\n\n` +
-              (isRefreshLocalOnly ? `🔧 Set NGROK_AUTHTOKEN for remote access` : `💡 **Tip:** Add header \`ngrok-skip-browser-warning: true\` to bypass warning`);
+            const refreshMessage = `🌐 **Web App Available**\n\n` +
+              `🔗 Access URL:\n${secureRefreshUrl}`;
             
             const refreshReplyMarkup = {
-              inline_keyboard: []
+              inline_keyboard: [
+                [{ text: '🌐 Open Web App', web_app: { url: secureRefreshUrl } }]
+              ]
             };
-            
-            // Only add Mini App button if it's publicly accessible (not localhost)
-            if (!isRefreshLocalOnly) {
-              refreshReplyMarkup.inline_keyboard.push([
-                { text: '🚀 Open Dev Tools', web_app: { url: this.webServerUrl } },
-                { text: '❌ Stop Server', callback_data: 'files:stop' }
-              ]);
-            } else {
-              refreshReplyMarkup.inline_keyboard.push([
-                { text: '❌ Stop Server', callback_data: 'files:stop' }
-              ]);
-            }
               
             await this.bot.editMessageText(refreshMessage, {
               chat_id: chatId,

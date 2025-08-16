@@ -40,7 +40,7 @@ class KeyboardHandlers {
           { text: '🧠 Thinking' },
           { text: '📍 Path' },
           { text: '📁 Git' },
-          { text: '📁 Files' }
+          { text: '🌐 Web App' }
         ],
         [
           { text: '⚙️ Settings' },
@@ -133,7 +133,7 @@ class KeyboardHandlers {
       await this.mainBot.gitManager.showGitOverview(chatId);
       return true;
 
-    case '📁 Files':
+    case '🌐 Web App':
       logKeyboardButton();
       console.log(`[COMPONENT] StreamTelegramBot.handleFilesCommand - chatId: ${chatId}`);
       await this.mainBot.handleFilesCommand(chatId);

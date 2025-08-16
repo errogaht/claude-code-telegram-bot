@@ -1041,7 +1041,7 @@ class UnifiedWebServer {
         }
         
         // Return direct URL since we use QTunnel
-        const secureUrl = this.security.secureExternalUrl(this.publicUrl);
+        const secureUrl = this.security.secureExternalUrl(this.publicUrl, '', {});
         return secureUrl;
     }
 
