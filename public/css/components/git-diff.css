@@ -1,0 +1,133 @@
+/* Git Diff Component CSS */
+
+.diff-content { 
+    background: #f8f9fa; 
+    border: 1px solid #e1e1e1; 
+    border-radius: 4px; 
+    overflow-x: auto; 
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 13px; 
+    line-height: 1.4;
+}
+
+.diff-line { 
+    padding: 2px 8px; 
+    white-space: pre; 
+    border-left: 3px solid transparent; 
+    margin: 0;
+}
+
+.diff-line.added { 
+    background-color: #e6ffed; 
+    border-left-color: #28a745; 
+    color: #22863a;
+}
+
+.diff-line.removed { 
+    background-color: #ffeef0; 
+    border-left-color: #d73a49; 
+    color: #b31d28;
+}
+
+.diff-line.context { 
+    color: #586069; 
+}
+
+.diff-line.header { 
+    background-color: #f1f8ff; 
+    color: #0366d6; 
+    font-weight: 500;
+}
+
+.diff-line.hunk { 
+    background-color: #f6f8fa; 
+    color: #6a737d; 
+    border-left-color: #d1d5da;
+}
+
+.line-number {
+    display: inline-block; 
+    width: 50px; 
+    color: #959da5; 
+    text-align: right;
+    margin-right: 10px; 
+    user-select: none;
+}
+
+/* Git status styles */
+.git-status {
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.git-status .file-added {
+    color: #28a745;
+}
+
+.git-status .file-modified {
+    color: #ffc107;
+}
+
+.git-status .file-deleted {
+    color: #dc3545;
+}
+
+.git-status .file-renamed {
+    color: #17a2b8;
+}
+
+/* Git diff list styles */
+.diff-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.diff-list-item {
+    padding: 12px;
+    border-bottom: 1px solid #e1e1e1;
+    background: white;
+    transition: background-color 0.2s;
+}
+
+.diff-list-item:hover {
+    background: #f8f9fa;
+}
+
+.diff-list-item a {
+    text-decoration: none;
+    color: #333;
+    display: block;
+}
+
+.diff-list-item .file-path {
+    font-family: monospace;
+    font-weight: 500;
+}
+
+.diff-list-item .file-stats {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 4px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) { 
+    .diff-content { 
+        font-size: 12px; 
+    }
+    
+    .line-number { 
+        width: 40px; 
+        margin-right: 5px; 
+    }
+    
+    .diff-list-item {
+        padding: 10px;
+    }
+    
+    .diff-list-item .file-path {
+        font-size: 0.9em;
+    }
+}

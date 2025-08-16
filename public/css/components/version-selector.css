@@ -1,0 +1,63 @@
+/* Version Selector Component CSS */
+
+.version-selector { 
+    margin: 20px 0; 
+    padding: 20px; 
+    background: #e6f3ff; 
+    border-radius: 8px; 
+    border: 2px dashed #4FC08D; 
+    text-align: center;
+}
+
+.version-selector h3 { 
+    margin: 0 0 15px 0; 
+    color: #4FC08D; 
+    font-size: 1.1em; 
+}
+
+.version-buttons { 
+    display: flex; 
+    gap: 15px; 
+    justify-content: center; 
+    flex-wrap: wrap;
+}
+
+.version-btn { 
+    padding: 12px 20px; 
+    border-radius: 6px; 
+    text-decoration: none; 
+    font-weight: 600; 
+    transition: all 0.2s; 
+    display: inline-block;
+    min-width: 140px; 
+    text-align: center;
+}
+
+.version-btn.current { 
+    background: #6c757d; 
+    color: white; 
+    border: 2px solid #6c757d; 
+}
+
+.version-btn.vue { 
+    background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%); 
+    color: white; 
+    border: 2px solid #4FC08D; 
+}
+
+.version-btn:hover { 
+    transform: translateY(-1px); 
+    filter: brightness(1.1);
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) { 
+    .version-buttons { 
+        flex-direction: column; 
+        align-items: center; 
+    }
+    
+    .version-btn { 
+        min-width: 200px; 
+    }
+}

@@ -1,0 +1,197 @@
+/* File Browser Component CSS */
+
+/* Breadcrumb navigation */
+.breadcrumb {
+    background: #f8f9fa;
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    border: 1px solid #e1e1e1;
+}
+
+.breadcrumb a {
+    color: #007cba;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb span {
+    color: #666;
+    margin: 0 8px;
+}
+
+/* File list styles */
+.file-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #e1e1e1;
+    border-radius: 6px;
+    background: white;
+}
+
+.file-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e1e1e1;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-item:hover {
+    background: #f8f9fa;
+}
+
+.file-item a {
+    text-decoration: none;
+    color: #333;
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.file-item a:hover {
+    color: #007cba;
+}
+
+.file-icon {
+    margin-right: 12px;
+    font-size: 1.2em;
+    width: 20px;
+    text-align: center;
+}
+
+.file-name {
+    font-family: monospace;
+    font-weight: 500;
+    flex: 1;
+}
+
+.file-info {
+    font-size: 0.85em;
+    color: #666;
+    white-space: nowrap;
+    margin-left: 15px;
+}
+
+/* Directory specific styles */
+.file-item.directory .file-name {
+    color: #007cba;
+    font-weight: 600;
+}
+
+.file-item.directory .file-icon {
+    color: #ffc107;
+}
+
+/* File type specific styles */
+.file-item.javascript .file-icon {
+    color: #f7df1e;
+}
+
+.file-item.json .file-icon {
+    color: #4285f4;
+}
+
+.file-item.markdown .file-icon {
+    color: #333;
+}
+
+.file-item.image .file-icon {
+    color: #28a745;
+}
+
+/* Empty directory message */
+.empty-directory {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-style: italic;
+}
+
+/* File viewer styles */
+.file-content {
+    background: #f8f9fa;
+    border: 1px solid #e1e1e1;
+    border-radius: 6px;
+    overflow-x: auto;
+    max-height: 70vh;
+}
+
+.file-content pre {
+    margin: 0;
+    padding: 15px;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.file-content code {
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+}
+
+/* Line numbers for code display */
+.line-numbers {
+    counter-reset: line;
+}
+
+.line-numbers .line {
+    counter-increment: line;
+}
+
+.line-numbers .line::before {
+    content: counter(line);
+    display: inline-block;
+    width: 40px;
+    padding-right: 10px;
+    color: #999;
+    text-align: right;
+    user-select: none;
+    border-right: 1px solid #e1e1e1;
+    margin-right: 10px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .file-item {
+        padding: 10px 12px;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .file-item a {
+        width: 100%;
+        margin-bottom: 5px;
+    }
+    
+    .file-info {
+        margin-left: 0;
+        margin-top: 5px;
+        align-self: flex-start;
+    }
+    
+    .breadcrumb {
+        padding: 10px 12px;
+        font-size: 0.9em;
+    }
+    
+    .file-content pre {
+        padding: 10px;
+        font-size: 12px;
+    }
+    
+    .line-numbers .line::before {
+        width: 30px;
+        padding-right: 5px;
+    }
+}

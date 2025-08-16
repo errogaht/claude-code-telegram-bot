@@ -1,0 +1,68 @@
+/* Menu Grid Component CSS */
+
+.menu-grid { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+    gap: 20px; 
+}
+
+.menu-item { 
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white; 
+    padding: 25px; 
+    border-radius: 12px; 
+    text-decoration: none; 
+    transition: transform 0.2s;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    display: block;
+}
+
+.menu-item:hover { 
+    transform: translateY(-2px); 
+    box-shadow: 0 6px 25px rgba(0,0,0,0.15); 
+    color: white; 
+    text-decoration: none;
+}
+
+/* Menu item variants */
+.menu-item.git { 
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
+}
+
+.menu-item.info { 
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); 
+}
+
+/* Menu item content */
+.menu-icon { 
+    font-size: 2.5em; 
+    margin-bottom: 15px; 
+    display: block; 
+}
+
+.menu-title { 
+    font-size: 1.3em; 
+    font-weight: 600; 
+    margin-bottom: 8px; 
+}
+
+.menu-desc { 
+    font-size: 0.95em; 
+    opacity: 0.9; 
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) { 
+    .menu-grid { 
+        grid-template-columns: 1fr; 
+    }
+    
+    .menu-item {
+        padding: 20px;
+    }
+    
+    .menu-icon {
+        font-size: 2em;
+        margin-bottom: 10px;
+    }
+}

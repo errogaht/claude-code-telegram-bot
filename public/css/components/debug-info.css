@@ -1,0 +1,52 @@
+/* Debug Info Component CSS */
+
+.debug-info {
+    background: #f8f9fa; 
+    padding: 15px; 
+    border-radius: 8px; 
+    margin: 20px 0;
+    border-left: 4px solid #4FC08D; 
+    font-family: monospace; 
+    font-size: 14px;
+}
+
+.debug-info strong {
+    color: #4FC08D;
+}
+
+/* Debug info variants */
+.debug-info.error {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+}
+
+.debug-info.error strong {
+    color: #dc3545;
+}
+
+.debug-info.warning {
+    border-left-color: #ffc107;
+    background: #fff3cd;
+}
+
+.debug-info.warning strong {
+    color: #856404;
+}
+
+.debug-info.success {
+    border-left-color: #28a745;
+    background: #d4edda;
+}
+
+.debug-info.success strong {
+    color: #28a745;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .debug-info {
+        font-size: 13px;
+        padding: 12px;
+        margin: 15px 0;
+    }
+}

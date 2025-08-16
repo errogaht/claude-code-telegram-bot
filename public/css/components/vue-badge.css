@@ -1,0 +1,32 @@
+/* Vue Badge Component CSS */
+
+.vue-badge {
+    display: inline-block; 
+    background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
+    color: white; 
+    padding: 4px 12px; 
+    border-radius: 12px; 
+    font-size: 0.8em;
+    font-weight: 600; 
+    margin-left: 10px;
+}
+
+/* Vue badge variants */
+.vue-badge.large {
+    font-size: 1em;
+    padding: 6px 16px;
+}
+
+.vue-badge.small {
+    font-size: 0.7em;
+    padding: 3px 8px;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .vue-badge {
+        margin-left: 5px;
+        margin-top: 5px;
+        display: inline-block;
+    }
+}
