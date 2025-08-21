@@ -16,6 +16,7 @@ const MessageSplitter = require('./MessageSplitter');
 const SettingsMenuHandler = require('./SettingsMenuHandler');
 const CommandsHandler = require('./CommandsHandler');
 const UnifiedWebServer = require('./UnifiedWebServer');
+const ConfigManager = require('./ConfigManager');
 const path = require('path');
 
 class StreamTelegramBot {
@@ -32,6 +33,9 @@ class StreamTelegramBot {
     
     // Store config file path for saving admin ID
     this.configFilePath = options.configFilePath;
+    
+    // Initialize ConfigManager for efficient in-memory config operations
+    this.configManager = options.configFilePath ? new ConfigManager(options.configFilePath) : null;
     
     // Store bot instance name for PM2 restart
     this.botInstanceName = options.botInstanceName || 'bot1';
@@ -680,22 +684,15 @@ class StreamTelegramBot {
     }
     this.userPreferences.set(`${userId}_thinking`, thinkingMode);
     
-    // Persist to config file
-    if (!this.configFilePath) {
-      console.warn('[Bot] No config file path provided, cannot store user thinking mode');
+    // Persist to config file using ConfigManager (efficient in-memory operation)
+    if (!this.configManager) {
+      console.warn('[Bot] No config manager available, cannot store user thinking mode');
       return;
     }
     
     try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      // Store thinking mode in config
-      config.thinkingMode = thinkingMode;
-      
-      // Write back to file
-      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      // Store thinking mode in config (ConfigManager handles disk persistence)
+      this.configManager.setThinkingMode(thinkingMode);
       
       console.log(`[Bot] Stored thinking mode ${thinkingMode} for bot config`);
     } catch (error) {
@@ -827,20 +824,18 @@ class StreamTelegramBot {
       }
     }
     
-    // Then check config file
-    if (this.configFilePath) {
+    // Then check config file using ConfigManager (efficient in-memory read)
+    if (this.configManager) {
       try {
-        const fs = require('fs');
-        const configData = fs.readFileSync(this.configFilePath, 'utf8');
-        const config = JSON.parse(configData);
+        const thinkingMode = this.configManager.getThinkingMode();
         
-        if (config.thinkingMode) {
+        if (thinkingMode) {
           // Cache in memory for faster access
           if (!this.userPreferences) {
             this.userPreferences = new Map();
           }
-          this.userPreferences.set(`${userId}_thinking`, config.thinkingMode);
-          return config.thinkingMode;
+          this.userPreferences.set(`${userId}_thinking`, thinkingMode);
+          return thinkingMode;
         }
       } catch (error) {
         console.error('[Bot] Error loading thinking mode from config:', error.message);
@@ -861,37 +856,34 @@ class StreamTelegramBot {
    * Store user's model preference for current project
    */
   storeUserModel(userId, model) {
-    if (!this.configFilePath) {
-      console.warn('[Bot] No config file path provided, cannot store user model');
+    if (!this.configManager) {
+      console.warn('[Bot] No config manager available, cannot store user model');
       return;
     }
     
     try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      // Initialize projectSessions if it doesn't exist
-      if (!config.projectSessions) {
-        config.projectSessions = {};
-      }
-      
+      // Get current project sessions using ConfigManager (efficient in-memory read)
+      const projectSessions = this.configManager.getProjectSessions();
       const currentProject = this.options.workingDirectory;
       
       // Update or create project session with new model preference
-      if (!config.projectSessions[currentProject]) {
-        config.projectSessions[currentProject] = {
+      const updatedSessions = { ...projectSessions };
+      if (!updatedSessions[currentProject]) {
+        updatedSessions[currentProject] = {
           userId: userId.toString(),
           model: model,
           timestamp: new Date().toISOString()
         };
       } else {
-        config.projectSessions[currentProject].model = model;
-        config.projectSessions[currentProject].timestamp = new Date().toISOString();
+        updatedSessions[currentProject] = {
+          ...updatedSessions[currentProject],
+          model: model,
+          timestamp: new Date().toISOString()
+        };
       }
       
-      // Write back to file
-      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      // Update project sessions using ConfigManager (handles disk persistence)
+      this.configManager.updateProjectSessions(updatedSessions);
       
       console.log(`[Bot] Stored user model ${model} for project ${currentProject}`);
     } catch (error) {
@@ -903,20 +895,18 @@ class StreamTelegramBot {
    * Get user's model preference for current project
    */
   getUserModel(userId) {
-    if (!this.configFilePath) {
+    if (!this.configManager) {
       return null;
     }
     
     try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
+      // Get project sessions using ConfigManager (efficient in-memory read)
+      const projectSessions = this.configManager.getProjectSessions();
       const currentProject = this.options.workingDirectory;
       
       // Get model preference from project-specific session
-      if (config.projectSessions && config.projectSessions[currentProject]) {
-        const projectSession = config.projectSessions[currentProject];
+      if (projectSessions && projectSessions[currentProject]) {
+        const projectSession = projectSessions[currentProject];
         if (projectSession.userId === userId.toString() && projectSession.model) {
           return projectSession.model;
         }
@@ -1281,23 +1271,17 @@ class StreamTelegramBot {
    * Save admin user ID to config file permanently
    */
   async saveAdminToConfig(userId) {
-    if (!this.configFilePath) {
-      console.warn('[Admin] No config file path provided, cannot save admin ID');
+    if (!this.configManager) {
+      console.warn('[Admin] No config manager available, cannot save admin ID');
       return;
     }
     
     try {
-      // Read current config
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      // Update admin user ID
-      config.adminUserId = userId.toString();
-      config.lastAdminUpdate = new Date().toISOString();
-      
-      // Write back to file
-      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      // Update admin user ID using ConfigManager (handles disk persistence)
+      this.configManager.update({
+        adminUserId: userId.toString(),
+        lastAdminUpdate: new Date().toISOString()
+      });
       
       console.log(`[Admin] Saved admin user ID ${userId} to config file`);
     } catch (error) {
@@ -1309,30 +1293,22 @@ class StreamTelegramBot {
    * Save current session state to config file
    */
   async saveCurrentSessionToConfig(userId, sessionId) {
-    if (!this.configFilePath) {
-      console.warn('[Session] No config file path provided, cannot save session');
+    if (!this.configManager) {
+      console.warn('[Session] No config manager available, cannot save session');
       return;
     }
     
     try {
-      // Read current config
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
+      // Save current session info using ConfigManager (handles disk persistence)
+      const lastSession = {
+        userId: userId.toString(),
+        sessionId: sessionId,
+        timestamp: new Date().toISOString(),
+        workingDirectory: this.options.workingDirectory,
+        model: this.options.model
+      };
       
-      // Save current session info
-      if (!config.lastSession) {
-        config.lastSession = {};
-      }
-      
-      config.lastSession.userId = userId.toString();
-      config.lastSession.sessionId = sessionId;
-      config.lastSession.timestamp = new Date().toISOString();
-      config.lastSession.workingDirectory = this.options.workingDirectory;
-      config.lastSession.model = this.options.model;
-      
-      // Write back to file
-      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
+      this.configManager.set('lastSession', lastSession);
       
       console.log(`[Session] Saved current session ${sessionId.slice(-8)} to config`);
     } catch (error) {
@@ -1344,28 +1320,32 @@ class StreamTelegramBot {
    * Restore last session from config file
    */
   async restoreLastSessionFromConfig() {
-    if (!this.configFilePath) {
+    if (!this.configManager) {
       return null;
     }
     
     try {
-      // Read current config
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
+      // Get current project using ConfigManager (efficient in-memory read)
+      const currentProject = this.configManager.getCurrentProject();
       
       // Set working directory from currentProject
-      if (config.currentProject) {
-        this.options.workingDirectory = config.currentProject;
-        console.log(`[Startup] Restored current project: ${config.currentProject}`);
+      if (currentProject) {
+        this.options.workingDirectory = currentProject;
+        console.log(`[Startup] Restored current project: ${currentProject}`);
+        
+        // Update UnifiedWebServer project root to match current project
+        if (this.unifiedWebServer) {
+          this.unifiedWebServer.updateProjectRoot(currentProject);
+        }
       }
       
-      // Get project-specific session
-      if (config.projectSessions && config.currentProject) {
-        const projectSession = config.projectSessions[config.currentProject];
+      // Get project-specific session using ConfigManager (efficient in-memory read)
+      const projectSessions = this.configManager.getProjectSessions();
+      if (projectSessions && currentProject) {
+        const projectSession = projectSessions[currentProject];
         
         if (projectSession && projectSession.sessionId) {
-          console.log(`[Session] Found session ${projectSession.sessionId.slice(-8)} for project ${config.currentProject}`);
+          console.log(`[Session] Found session ${projectSession.sessionId.slice(-8)} for project ${currentProject}`);
           
           // Update bot options from project session
           if (projectSession.model) {
@@ -1376,11 +1356,11 @@ class StreamTelegramBot {
             userId: parseInt(projectSession.userId),
             sessionId: projectSession.sessionId,
             timestamp: projectSession.timestamp,
-            workingDirectory: config.currentProject,
+            workingDirectory: currentProject,
             model: projectSession.model
           };
         } else {
-          console.log(`[Session] No session found for current project: ${config.currentProject}`);
+          console.log(`[Session] No session found for current project: ${currentProject}`);
         }
       }
       
@@ -1434,31 +1414,30 @@ class StreamTelegramBot {
    * Load thinking mode from config file on startup
    */
   loadThinkingModeFromConfig() {
-    if (!this.configFilePath) {
-      console.log('💡 [Startup] No config file path, using default thinking mode');
+    if (!this.configManager) {
+      console.log('💡 [Startup] No config manager available, using default thinking mode');
       return;
     }
     
     try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
+      // Get thinking mode using ConfigManager (efficient in-memory read)
+      const thinkingMode = this.configManager.getThinkingMode();
       
-      if (config.thinkingMode) {
+      if (thinkingMode) {
         // Initialize user preferences map if needed
         if (!this.userPreferences) {
           this.userPreferences = new Map();
         }
         
         // Store thinking mode globally - will be applied when admin user is known
-        this.configThinkingMode = config.thinkingMode;
+        this.configThinkingMode = thinkingMode;
         
         // If admin user is already known, apply immediately
         if (this.adminUserId) {
-          this.userPreferences.set(`${this.adminUserId}_thinking`, config.thinkingMode);
-          console.log(`🧠 [Startup] Loaded thinking mode: ${config.thinkingMode} for user ${this.adminUserId}`);
+          this.userPreferences.set(`${this.adminUserId}_thinking`, thinkingMode);
+          console.log(`🧠 [Startup] Loaded thinking mode: ${thinkingMode} for user ${this.adminUserId}`);
         } else {
-          console.log(`🧠 [Startup] Thinking mode in config: ${config.thinkingMode}, will apply when admin user is set`);
+          console.log(`🧠 [Startup] Thinking mode in config: ${thinkingMode}, will apply when admin user is set`);
         }
       } else {
         console.log('💡 [Startup] No thinking mode found in config, using default (auto)');
@@ -1637,6 +1616,9 @@ class StreamTelegramBot {
     console.log(`[ProcessUserMessage] Starting typing indicator for chat ${chatId}`);
     // Start typing indicator
     await this.activityIndicator.start(chatId);
+
+    // Start session duration tracking
+    this.sessionManager.startSessionTiming(userId);
 
     try {
       // Check if we have a stored session ID to resume
@@ -2264,17 +2246,14 @@ class StreamTelegramBot {
    * Get QTunnel token from bot config file
    */
   getQTunnelTokenFromConfig() {
-    if (!this.configFilePath) {
-      console.warn(`[${this.botInstanceName}] No config file path, QTunnel token unavailable`);
+    if (!this.configManager) {
+      console.warn(`[${this.botInstanceName}] No config manager available, QTunnel token unavailable`);
       return null;
     }
     
     try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      const token = config.qTunnelToken;
+      // Get QTunnel token using ConfigManager (efficient in-memory read)
+      const token = this.configManager.getQTunnelToken();
       console.log(`[${this.botInstanceName}] QTunnel token: ${token ? '[CONFIGURED]' : '[NOT FOUND]'}`);
       
       return token || null;

@@ -348,10 +348,15 @@ class TelegramFormatter {
    * Format execution result (returns Markdown text)
    */
   formatExecutionResult(result, sessionId = null) {
-    const { success, cost, duration, usage } = result;
+    const { success, cost, duration, usage, sessionDuration } = result;
     
     const sessionIdText = sessionId ? sessionId.slice(-8) : 'unknown';
     let text = `${success ? '✅' : '❌'} ${success ? `**Session** \`${sessionIdText}\` **ended** #session_ended` : '**Execution Failed**'}\n\n`;
+    
+    // Add session duration (time from user message to completion)
+    if (sessionDuration) {
+      text += `⏰ **Session Time:** ${(sessionDuration / 1000).toFixed(1)}s\n`;
+    }
     
     if (duration) {
       text += `⏱ **Duration:** ${(duration / 1000).toFixed(2)}s\n`;

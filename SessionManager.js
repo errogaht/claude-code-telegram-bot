@@ -87,7 +87,10 @@ class SessionManager {
       lastHealthCheck: Date.now(),
       isContinuation: !!previousTokenUsage,
       sessionTitle: sessionTitle,
-      autoCompactInProgress: false
+      autoCompactInProgress: false,
+      // Session duration tracking
+      sessionStartTime: null,
+      sessionDuration: null
     };
 
     // Setup event handlers for this processor
@@ -212,6 +215,12 @@ class SessionManager {
     processor.on('execution-result', async (data) => {
       console.log(`[User ${userId}] Execution complete: ${data.success}`);
 
+      // Calculate session duration if timing was started
+      if (session.sessionStartTime) {
+        session.sessionDuration = Date.now() - session.sessionStartTime;
+        console.log(`[User ${userId}] Session duration: ${session.sessionDuration}ms`);
+      }
+
       // Update activity and token tracking
       this.updateSessionActivity(session);
       this.updateTokenUsage(session, data);
@@ -226,7 +235,13 @@ class SessionManager {
       const ImageHandler = require('./ImageHandler');
       ImageHandler.cleanupTempFile(session, userId);
 
-      const formatted = this.formatter.formatExecutionResult(data, session.sessionId);
+      // Add duration to the data for formatting
+      const dataWithDuration = {
+        ...data,
+        sessionDuration: session.sessionDuration
+      };
+
+      const formatted = this.formatter.formatExecutionResult(dataWithDuration, session.sessionId);
       await this.mainBot.safeSendMessage(chatId, formatted);
       
       // Check for title changes after Claude completes processing
@@ -538,6 +553,17 @@ class SessionManager {
    */
   getUserSession(userId) {
     return this.userSessions.get(userId);
+  }
+
+  /**
+   * Start timing for session duration
+   */
+  startSessionTiming(userId) {
+    const session = this.getUserSession(userId);
+    if (session) {
+      session.sessionStartTime = Date.now();
+      console.log(`[User ${userId}] Session timing started`);
+    }
   }
 
   /**
