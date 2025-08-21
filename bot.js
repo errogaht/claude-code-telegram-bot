@@ -1618,7 +1618,7 @@ class StreamTelegramBot {
     await this.activityIndicator.start(chatId);
 
     // Start session duration tracking
-    this.sessionManager.startSessionTiming(userId);
+    this.sessionManager.startSessionTiming(userId, finalText);
 
     try {
       // Check if we have a stored session ID to resume

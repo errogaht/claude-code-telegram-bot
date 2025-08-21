@@ -1,4 +1,5 @@
 const ClaudeStreamProcessor = require('./claude-stream-processor');
+const ActivityWatchIntegration = require('./ActivityWatchIntegration');
 
 /**
  * Session Manager - Extracted from StreamTelegramBot
@@ -23,6 +24,26 @@ class SessionManager {
     
     // Title tracking for auto-pin functionality
     this.sessionTitles = new Map(); // userId -> { lastTitle, chatId }
+    
+    // ActivityWatch integration for time tracking
+    this.activityWatch = new ActivityWatchIntegration({
+      enabled: options.activityWatchEnabled !== false // Enable by default
+    });
+    
+    // Initialize ActivityWatch bucket asynchronously (don't block constructor)
+    this.initializeActivityWatch();
+  }
+
+  /**
+   * Initialize ActivityWatch integration
+   */
+  async initializeActivityWatch() {
+    try {
+      await this.activityWatch.initialize();
+      console.log('[SessionManager] ActivityWatch integration ready');
+    } catch (error) {
+      console.error('[SessionManager] ActivityWatch initialization failed:', error.message);
+    }
   }
 
   /**
@@ -243,6 +264,23 @@ class SessionManager {
 
       const formatted = this.formatter.formatExecutionResult(dataWithDuration, session.sessionId);
       await this.mainBot.safeSendMessage(chatId, formatted);
+      
+      // Record session in ActivityWatch for time tracking
+      if (session.sessionDuration && session.sessionId) {
+        // Get last user message for context (optional)
+        const lastMessage = session.lastUserMessage || 'No message';
+        
+        await this.activityWatch.recordSession({
+          sessionId: session.sessionId,
+          userId: userId,
+          duration: session.sessionDuration, // in milliseconds
+          message: lastMessage,
+          success: data.success,
+          tokens: data.usage ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0) : null,
+          cost: data.cost || null,
+          model: this.getUserModel(userId) || this.options.model
+        });
+      }
       
       // Check for title changes after Claude completes processing
       const sessionId = session.sessionId || session.processor.getCurrentSessionId();
@@ -558,10 +596,11 @@ class SessionManager {
   /**
    * Start timing for session duration
    */
-  startSessionTiming(userId) {
+  startSessionTiming(userId, userMessage = null) {
     const session = this.getUserSession(userId);
     if (session) {
       session.sessionStartTime = Date.now();
+      session.lastUserMessage = userMessage; // Store for ActivityWatch
       console.log(`[User ${userId}] Session timing started`);
     }
   }
