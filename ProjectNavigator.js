@@ -13,6 +13,12 @@ class ProjectNavigator {
     this.mainBot = mainBot; // Reference to main bot for delegation
     this.projectCache = new Map(); // shortId -> fullPath
     this.projectCacheCounter = 0;
+    
+    // State for new project creation
+    this.projectCreationState = {
+      inProgress: false,
+      chatId: null
+    };
   }
 
 
@@ -122,8 +128,11 @@ class ProjectNavigator {
       buttons.push(paginationRow);
     }
     
-    // Add refresh button
+    // Add create new project and refresh buttons
     buttons.push([{
+      text: '➕ Create New Project',
+      callback_data: 'setdir:create_new'
+    }, {
       text: '🔄 Refresh Projects',
       callback_data: 'setdir:refresh'
     }]);
@@ -220,6 +229,14 @@ class ProjectNavigator {
     if (dirAction === 'refresh') {
       await this.bot.deleteMessage(chatId, messageId);
       await this.showProjectSelection(chatId);
+    } else if (dirAction === 'create_new') {
+      await this.showCreateNewProjectInterface(chatId, messageId);
+    } else if (dirAction === 'cancel_create') {
+      // Cancel project creation
+      this.projectCreationState.inProgress = false;
+      this.projectCreationState.chatId = null;
+      await this.bot.deleteMessage(chatId, messageId);
+      await this.showProjectSelection(chatId);
     } else if (dirAction.startsWith('page:')) {
       const page = parseInt(dirAction.split(':')[1]);
       await this.bot.deleteMessage(chatId, messageId);
@@ -229,6 +246,310 @@ class ProjectNavigator {
       return;
     } else {
       await this.handleDirectoryChange(dirAction, chatId, messageId);
+    }
+  }
+
+  /**
+   * Show create new project interface
+   */
+  async showCreateNewProjectInterface(chatId, messageId) {
+    const projectsHomeDir = this.getProjectsHomeDirectory();
+    
+    if (!projectsHomeDir) {
+      await this.mainBot.safeEditMessage(chatId, messageId, 
+        '❌ **Projects Home Directory Not Configured**\n\n' +
+        'Please add `projectsHomeDirectory` to your bot configuration file.\n\n' +
+        '**Example:**\n```json\n{\n  "projectsHomeDirectory": "/home/user/projects"\n}\n```',
+        { 
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔙 Back to Projects', callback_data: 'setdir:refresh' }
+            ]]
+          }
+        }
+      );
+      return;
+    }
+
+    // Check if projects home directory exists
+    if (!fs.existsSync(projectsHomeDir)) {
+      try {
+        fs.mkdirSync(projectsHomeDir, { recursive: true });
+      } catch (error) {
+        await this.mainBot.safeEditMessage(chatId, messageId, 
+          `❌ **Cannot Create Projects Directory**\n\n` +
+          `**Path:** \`${projectsHomeDir}\`\n` +
+          `**Error:** ${error.message}\n\n` +
+          'Please check the path and permissions.',
+          { 
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🔙 Back to Projects', callback_data: 'setdir:refresh' }
+              ]]
+            }
+          }
+        );
+        return;
+      }
+    }
+
+    // Set state for text input
+    this.projectCreationState.inProgress = true;
+    this.projectCreationState.chatId = chatId;
+
+    await this.mainBot.safeEditMessage(chatId, messageId,
+      '➕ **Create New Project**\n\n' +
+      `**Projects Directory:** \`${projectsHomeDir}\`\n\n` +
+      '💡 **Enter project name:**\n' +
+      '• Use alphanumeric characters and dashes\n' +
+      '• No spaces or special characters\n' +
+      '• Example: `my-awesome-project`\n\n' +
+      '📝 Type the project name in your next message...',
+      { 
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '❌ Cancel', callback_data: 'setdir:cancel_create' }
+          ]]
+        }
+      }
+    );
+  }
+
+  /**
+   * Get projects home directory from config
+   */
+  getProjectsHomeDirectory() {
+    if (this.mainBot && this.mainBot.configManager) {
+      return this.mainBot.configManager.get('projectsHomeDirectory');
+    }
+    
+    // Fallback to reading from config file directly
+    if (this.mainBot && this.mainBot.configFilePath) {
+      try {
+        const configData = fs.readFileSync(this.mainBot.configFilePath, 'utf8');
+        const config = JSON.parse(configData);
+        return config.projectsHomeDirectory;
+      } catch (error) {
+        console.error('[ProjectNavigator] Error reading config for projectsHomeDirectory:', error.message);
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Handle text input for project creation
+   */
+  async handleTextInput(chatId, text) {
+    if (this.projectCreationState.inProgress && this.projectCreationState.chatId === chatId) {
+      // Reset state
+      this.projectCreationState.inProgress = false;
+      this.projectCreationState.chatId = null;
+      
+      // Process project creation
+      await this.createNewProject(chatId, text);
+      return true; // Indicate that we handled this text input
+    }
+    
+    return false; // We didn't handle this text input
+  }
+
+  /**
+   * Create new project directory and initialize Claude Code files
+   */
+  async createNewProject(chatId, projectName) {
+    try {
+      // Validate project name
+      const validationResult = this.validateProjectName(projectName);
+      if (!validationResult.valid) {
+        await this.mainBot.safeSendMessage(chatId, 
+          '❌ **Invalid Project Name**\n\n' +
+          `**Error:** ${validationResult.error}\n\n` +
+          '💡 **Valid project names:**\n' +
+          '• Use alphanumeric characters and dashes only\n' +
+          '• Must start with letter or number\n' +
+          '• 3-50 characters long\n' +
+          '• Examples: `my-app`, `web-project-2024`',
+          { 
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '➕ Try Again', callback_data: 'setdir:create_new' },
+                { text: '📂 Projects', callback_data: 'setdir:refresh' }
+              ]]
+            }
+          }
+        );
+        return;
+      }
+
+      const projectsHomeDir = this.getProjectsHomeDirectory();
+      const newProjectPath = path.join(projectsHomeDir, projectName);
+
+      // Check if project already exists
+      if (fs.existsSync(newProjectPath)) {
+        await this.mainBot.safeSendMessage(chatId, 
+          '❌ **Project Already Exists**\n\n' +
+          `A project named \`${projectName}\` already exists.\n\n` +
+          '💡 Choose a different name or select the existing project.',
+          { 
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '➕ Try Different Name', callback_data: 'setdir:create_new' },
+                { text: '📂 Projects', callback_data: 'setdir:refresh' }
+              ]]
+            }
+          }
+        );
+        return;
+      }
+
+      // Create project directory
+      fs.mkdirSync(newProjectPath, { recursive: true });
+
+      // Initialize Claude Code project structure
+      await this.initializeClaudeCodeProject(newProjectPath, projectName);
+
+      // Update working directory to the new project
+      this.options.workingDirectory = newProjectPath;
+
+      // Update UnifiedWebServer project root to match new directory
+      if (this.mainBot && this.mainBot.unifiedWebServer) {
+        this.mainBot.unifiedWebServer.updateProjectRoot(newProjectPath);
+      }
+
+      // Save to config
+      await this.saveCurrentProjectToConfig(newProjectPath);
+
+      await this.mainBot.safeSendMessage(chatId, 
+        '✅ **Project Created Successfully**\n\n' +
+        `📁 **Project:** \`${projectName}\`\n` +
+        `📂 **Path:** \`${newProjectPath}\`\n\n` +
+        '🚀 **What was created:**\n' +
+        '• Project directory structure\n' +
+        '• Claude Code session files\n' +
+        '• Basic README.md file\n' +
+        '• .gitignore file\n\n' +
+        '💡 **Next steps:**\n' +
+        '• Start coding in your new project\n' +
+        '• Use /new to begin a Claude session',
+        { 
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔄 New Session', callback_data: 'new_session' },
+              { text: '📂 Projects', callback_data: 'setdir:refresh' }
+            ]]
+          }
+        }
+      );
+
+    } catch (error) {
+      console.error('[ProjectNavigator] Error creating new project:', error);
+      await this.mainBot.safeSendMessage(chatId, 
+        '❌ **Project Creation Failed**\n\n' +
+        `**Error:** ${error.message}\n\n` +
+        '💡 This might happen due to:\n' +
+        '• Permission issues\n' +
+        '• Disk space problems\n' +
+        '• Invalid directory path',
+        { 
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '➕ Try Again', callback_data: 'setdir:create_new' },
+              { text: '📂 Projects', callback_data: 'setdir:refresh' }
+            ]]
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Validate project name
+   */
+  validateProjectName(projectName) {
+    if (!projectName || projectName.trim().length === 0) {
+      return { valid: false, error: 'Project name cannot be empty' };
+    }
+
+    const name = projectName.trim();
+
+    if (name.length < 3 || name.length > 50) {
+      return { valid: false, error: 'Project name must be 3-50 characters long' };
+    }
+
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(name)) {
+      return { valid: false, error: 'Project name must start with letter/number and contain only letters, numbers, and dashes' };
+    }
+
+    if (name.startsWith('-') || name.endsWith('-')) {
+      return { valid: false, error: 'Project name cannot start or end with dash' };
+    }
+
+    if (name.includes('--')) {
+      return { valid: false, error: 'Project name cannot contain consecutive dashes' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Initialize Claude Code project structure
+   */
+  async initializeClaudeCodeProject(projectPath, projectName) {
+    // Create basic README.md
+    const readmeContent = `# ${projectName}\n\nA new project created with Claude Code Telegram Bot.\n\n## Getting Started\n\nThis project was automatically initialized with:\n- Basic project structure\n- Claude Code session support\n- Git ignore file\n\n## Usage\n\nUse the Telegram bot to:\n- Start coding sessions with /new\n- Manage git operations\n- Browse and edit files\n- Run development tasks\n\n## Development\n\nAdd your project-specific instructions here.\n`;
+
+    fs.writeFileSync(path.join(projectPath, 'README.md'), readmeContent, 'utf8');
+
+    // Create basic .gitignore
+    const gitignoreContent = `# Dependencies\nnode_modules/\n\n# Logs\nlogs\n*.log\nnpm-debug.log*\nyarn-debug.log*\nyarn-error.log*\n\n# Environment variables\n.env\n.env.local\n.env.development.local\n.env.test.local\n.env.production.local\n\n# IDE\n.vscode/\n.idea/\n*.swp\n*.swo\n*~\n\n# OS\n.DS_Store\nThumbs.db\n\n# Build output\ndist/\nbuild/\n\n# Claude Code temporary files\n.claude-temp/\n`;
+
+    fs.writeFileSync(path.join(projectPath, '.gitignore'), gitignoreContent, 'utf8');
+
+    // Update ~/.claude.json to add this project
+    await this.addProjectToClaudeConfig(projectPath);
+  }
+
+  /**
+   * Add project to ~/.claude.json configuration
+   */
+  async addProjectToClaudeConfig(projectPath) {
+    try {
+      const claudeConfigPath = path.join(os.homedir(), '.claude.json');
+      
+      let claudeConfig = {};
+      if (fs.existsSync(claudeConfigPath)) {
+        const configData = fs.readFileSync(claudeConfigPath, 'utf8');
+        claudeConfig = JSON.parse(configData);
+      }
+
+      if (!claudeConfig.projects) {
+        claudeConfig.projects = {};
+      }
+
+      // Add the new project with basic configuration
+      claudeConfig.projects[projectPath] = {
+        allowedTools: [],
+        dontCrawlDirectory: false,
+        hasClaudeMdExternalIncludesApproved: false,
+        hasClaudeMdExternalIncludesWarningShown: false,
+        hasTrustDialogAccepted: false,
+        history: [],
+        lastTotalWebSearchRequests: 0,
+        mcpContextUris: [],
+        mcpServers: {},
+        projectOnboardingSeenCount: 0,
+        lastUsed: Date.now()
+      };
+
+      // Write back to file
+      fs.writeFileSync(claudeConfigPath, JSON.stringify(claudeConfig, null, 2), 'utf8');
+      
+      console.log(`[ProjectNavigator] Added project to Claude config: ${projectPath}`);
+    } catch (error) {
+      console.error('[ProjectNavigator] Error updating Claude config:', error.message);
+      // Don't throw - project creation should succeed even if Claude config update fails
     }
   }
 

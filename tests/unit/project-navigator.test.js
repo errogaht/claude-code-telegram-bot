@@ -539,4 +539,182 @@ describe('ProjectNavigator', () => {
       expect(projects).toContain('/third/project');
     });
   });
+
+  describe('New Project Creation', () => {
+    beforeEach(() => {
+      // Mock mainBot with configManager
+      const mockMainBot = {
+        configManager: {
+          get: jest.fn().mockReturnValue('/home/user/aiprojects')
+        },
+        safeEditMessage: jest.fn().mockResolvedValue(true),
+        safeSendMessage: jest.fn().mockResolvedValue({ message_id: 123 })
+      };
+      projectNavigator = new ProjectNavigator(mockBot, mockOptions, mockMainBot);
+    });
+
+    describe('Project Name Validation', () => {
+      test('should accept valid project names', () => {
+        const validNames = [
+          'my-project',
+          'project123',
+          '123project', 
+          'a-b-c',
+          'longprojectname',
+          'web-app-2024'
+        ];
+
+        validNames.forEach(name => {
+          const result = projectNavigator.validateProjectName(name);
+          expect(result.valid).toBe(true);
+        });
+      });
+
+      test('should reject invalid project names', () => {
+        const invalidNames = [
+          '', // Empty
+          '  ', // Whitespace only
+          'a', // Too short
+          'ab', // Too short
+          'my project', // Contains spaces
+          'my--project', // Double dashes
+          '-project', // Starts with dash
+          'project-', // Ends with dash
+          'my_project', // Contains underscore
+          'my@project', // Contains special character
+          'very-long-project-name-that-definitely-exceeds-the-limit', // Too long
+        ];
+
+        invalidNames.forEach(name => {
+          const result = projectNavigator.validateProjectName(name);
+          expect(result.valid).toBe(false);
+          expect(result.error).toBeDefined();
+        });
+      });
+    });
+
+    describe('Projects Home Directory', () => {
+      test('should get projectsHomeDirectory from configManager', () => {
+        const result = projectNavigator.getProjectsHomeDirectory();
+        expect(result).toBe('/home/user/aiprojects');
+        expect(projectNavigator.mainBot.configManager.get).toHaveBeenCalledWith('projectsHomeDirectory');
+      });
+
+      test('should handle missing configManager', () => {
+        projectNavigator.mainBot.configManager = null;
+        projectNavigator.mainBot.configFilePath = null;
+        const result = projectNavigator.getProjectsHomeDirectory();
+        expect(result).toBeNull();
+      });
+
+      test('should fallback to reading config file directly', () => {
+        projectNavigator.mainBot.configManager = null;
+        projectNavigator.mainBot.configFilePath = '/path/to/config.json';
+        
+        const config = { projectsHomeDirectory: '/fallback/projects' };
+        mockFs.readFileSync.mockReturnValue(JSON.stringify(config));
+        mockFs.existsSync.mockReturnValue(true);
+
+        const result = projectNavigator.getProjectsHomeDirectory();
+        expect(result).toBe('/fallback/projects');
+      });
+    });
+
+    describe('Text Input Handling', () => {
+      test('should handle project creation text input', async () => {
+        // Set up state for project creation
+        projectNavigator.projectCreationState.inProgress = true;
+        projectNavigator.projectCreationState.chatId = 123;
+
+        const spy = jest.spyOn(projectNavigator, 'createNewProject').mockResolvedValue();
+
+        const handled = await projectNavigator.handleTextInput(123, 'my-project');
+
+        expect(handled).toBe(true);
+        expect(spy).toHaveBeenCalledWith(123, 'my-project');
+        expect(projectNavigator.projectCreationState.inProgress).toBe(false);
+        expect(projectNavigator.projectCreationState.chatId).toBeNull();
+
+        spy.mockRestore();
+      });
+
+      test('should ignore text input when not in progress', async () => {
+        projectNavigator.projectCreationState.inProgress = false;
+
+        const handled = await projectNavigator.handleTextInput(123, 'my-project');
+
+        expect(handled).toBe(false);
+      });
+
+      test('should ignore text input from wrong chat', async () => {
+        projectNavigator.projectCreationState.inProgress = true;
+        projectNavigator.projectCreationState.chatId = 456;
+
+        const handled = await projectNavigator.handleTextInput(123, 'my-project');
+
+        expect(handled).toBe(false);
+      });
+    });
+
+    describe('Callback Handling', () => {
+      test('should handle create new project callback', async () => {
+        const spy = jest.spyOn(projectNavigator, 'showCreateNewProjectInterface').mockResolvedValue();
+
+        await projectNavigator.handleSetdirCallback('create_new', 123, 456);
+
+        expect(spy).toHaveBeenCalledWith(123, 456);
+        spy.mockRestore();
+      });
+
+      test('should handle cancel create callback', async () => {
+        projectNavigator.projectCreationState.inProgress = true;
+        projectNavigator.projectCreationState.chatId = 123;
+
+        mockBot.deleteMessage = jest.fn().mockResolvedValue();
+        const spy = jest.spyOn(projectNavigator, 'showProjectSelection').mockResolvedValue();
+
+        await projectNavigator.handleSetdirCallback('cancel_create', 123, 456);
+
+        expect(projectNavigator.projectCreationState.inProgress).toBe(false);
+        expect(projectNavigator.projectCreationState.chatId).toBeNull();
+        expect(mockBot.deleteMessage).toHaveBeenCalledWith(123, 456);
+        expect(spy).toHaveBeenCalledWith(123);
+
+        spy.mockRestore();
+      });
+    });
+
+    describe('UI Updates', () => {
+      test('should include Create New Project button in project selection', async () => {
+        const claudeConfig = {
+          projects: {
+            '/home/user/project1': { lastUsed: 1000 }
+          }
+        };
+
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.readFileSync.mockReturnValue(JSON.stringify(claudeConfig));
+        mockFs.statSync.mockReturnValue({ isDirectory: () => true });
+
+        await projectNavigator.showProjectSelection(123);
+
+        expect(mockBot.safeSendMessage).toHaveBeenCalledWith(
+          123,
+          expect.any(String),
+          expect.objectContaining({
+            reply_markup: expect.objectContaining({
+              inline_keyboard: expect.arrayContaining([
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    text: '➕ Create New Project',
+                    callback_data: 'setdir:create_new'
+                  })
+                ])
+              ])
+            })
+          })
+        );
+      });
+    });
+  });
 });

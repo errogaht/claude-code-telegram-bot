@@ -4,6 +4,7 @@
   "adminUserId": "your_telegram_user_id_here",
   "nexaraApiKey": "your_nexara_api_key_here",
   "workingDirectory": "/home/user/dev-projects",
+  "projectsHomeDirectory": "/home/user/aiprojects",
   "defaultModel": "opus",
   "logLevel": "info"
 }

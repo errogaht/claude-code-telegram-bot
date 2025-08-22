@@ -189,6 +189,13 @@ class StreamTelegramBot {
             console.log('[DEBUG] Git manager processed the message');
             return; // GitManager handled the text input
           }
+          
+          console.log('[DEBUG] Checking project navigator...');
+          // Check if ProjectNavigator needs to handle this text input (e.g., project creation)
+          if (await this.projectNavigator.handleTextInput(chatId, msg.text)) {
+            console.log('[DEBUG] Project navigator processed the message');
+            return; // ProjectNavigator handled the text input
+          }
 
           console.log('[COMPONENT] StreamTelegramBot.handleUserMessage - processing regular text message');
           await this.handleUserMessage(msg);
@@ -370,6 +377,10 @@ class StreamTelegramBot {
           const [, userId, chatId] = data.split(':');
           console.log(`[COMPONENT] SessionManager.handleStartNewSession - userId: ${userId}, chatId: ${chatId}, messageId: ${messageId}`);
           await this.sessionManager.handleStartNewSession(parseInt(userId), parseInt(chatId), messageId);
+        } else if (data === 'new_session') {
+          console.log(`[COMPONENT] SessionManager.startNewSession - simple new session, chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
+          await this.sessionManager.startNewSession(chatId);
+          await this.bot.deleteMessage(chatId, messageId);
         } else {
           console.log(`[COMPONENT] Unknown button data: "${data}", chatId: ${chatId}, messageId: ${messageId}, userId: ${userId}`);
         }
