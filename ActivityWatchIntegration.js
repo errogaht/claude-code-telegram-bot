@@ -11,10 +11,11 @@ class ActivityWatchIntegration {
         this.bucketId = options.bucketId || 'claude-bot-sessions';
         this.hostname = require('os').hostname();
         this.enabled = options.enabled !== false; // Enabled by default
+        this.timeMultiplier = options.timeMultiplier || 1.0; // Default 1.0 (no change)
         
         console.log(`[ActivityWatch] Integration ${this.enabled ? 'enabled' : 'disabled'}`);
         if (this.enabled) {
-            console.log(`[ActivityWatch] URL: ${this.baseUrl}, Bucket: ${this.bucketId}`);
+            console.log(`[ActivityWatch] URL: ${this.baseUrl}, Bucket: ${this.bucketId}, Time Multiplier: ${this.timeMultiplier}x`);
         }
     }
 
@@ -44,7 +45,7 @@ class ActivityWatchIntegration {
     }
 
     /**
-     * Record a Claude session in ActivityWatch
+     * Record a Claude session in ActivityWatch with smart time scheduling
      */
     async recordSession(sessionData) {
         if (!this.enabled) return;
@@ -55,54 +56,169 @@ class ActivityWatchIntegration {
                 userId,
                 duration, // in milliseconds
                 message,
-                success = true,
+                projectName = 'Unknown Project',
                 tokens = null,
                 cost = null,
                 model = null
             } = sessionData;
 
-            // Convert duration from milliseconds to seconds for ActivityWatch
-            const durationSeconds = duration / 1000;
+            // Apply time multiplier and convert to seconds
+            const originalDurationSeconds = duration / 1000;
+            const adjustedDurationSeconds = originalDurationSeconds * this.timeMultiplier;
+
+            // Find optimal time window to avoid overlaps
+            const timeWindow = await this.findOptimalTimeWindow(adjustedDurationSeconds);
 
             const event = {
-                timestamp: new Date().toISOString(),
-                duration: durationSeconds,
+                timestamp: timeWindow.startTime,
+                duration: adjustedDurationSeconds,
                 data: {
-                    session_id: sessionId ? sessionId.slice(-8) : 'unknown', // Short ID for privacy
-                    user_id: userId ? `user_${userId}` : 'unknown', // Anonymized user ID
+                    session_id: sessionId ? sessionId.slice(-8) : 'unknown',
+                    user_id: userId ? `user_${userId}` : 'unknown',
+                    project: projectName,
                     message_preview: message ? message.substring(0, 100) + '...' : 'No message',
-                    status: success ? 'completed' : 'failed',
                     tokens: tokens,
                     cost: cost,
                     model: model,
                     app: 'claude-telegram-bot',
-                    category: 'AI Assistant'
+                    category: 'AI Assistant',
+                    original_duration: originalDurationSeconds,
+                    time_multiplier: this.timeMultiplier,
+                    time_shift: timeWindow.timeShift
                 }
             };
 
             const response = await axios.post(
                 `${this.baseUrl}/buckets/${this.bucketId}/events`,
-                [event], // ActivityWatch expects array of events
+                [event],
                 {
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 5000 // 5 second timeout
+                    timeout: 5000
                 }
             );
 
             const eventId = response.data[0]?.id;
-            console.log(`[ActivityWatch] Session recorded: ${sessionId?.slice(-8)} (${durationSeconds.toFixed(1)}s) -> Event ID: ${eventId}`);
+            const actualStart = new Date(timeWindow.startTime).toLocaleTimeString();
+            const actualEnd = new Date(Date.parse(timeWindow.startTime) + adjustedDurationSeconds * 1000).toLocaleTimeString();
+            
+            console.log(`[ActivityWatch] Session recorded: ${projectName} | ${sessionId?.slice(-8)} | ${originalDurationSeconds.toFixed(1)}s → ${adjustedDurationSeconds.toFixed(1)}s (${this.timeMultiplier}x) | ${actualStart}-${actualEnd} | Event ID: ${eventId}`);
             
             return eventId;
         } catch (error) {
             console.error('[ActivityWatch] Error recording session:', error.message);
             
-            // If ActivityWatch is down, disable temporarily
             if (error.code === 'ECONNREFUSED') {
                 console.warn('[ActivityWatch] Service appears to be down, disabling temporarily');
                 this.enabled = false;
             }
             
             return null;
+        }
+    }
+
+    /**
+     * Find optimal time window to avoid overlaps with existing Claude bot sessions
+     */
+    async findOptimalTimeWindow(durationSeconds) {
+        const now = new Date();
+        const currentEndTime = now.getTime();
+        const currentStartTime = currentEndTime - (durationSeconds * 1000);
+
+        try {
+            // Get recent events from our bucket to check for overlaps
+            const recentEvents = await this.getRecentEvents(24); // Last 24 hours
+            
+            // Filter only our app events
+            const ourEvents = recentEvents.filter(event => 
+                event.data.app === 'claude-telegram-bot'
+            );
+
+            if (ourEvents.length === 0) {
+                // No existing events, use current time
+                return {
+                    startTime: new Date(currentStartTime).toISOString(),
+                    timeShift: 0
+                };
+            }
+
+            // Try to place the session starting at the original time
+            let proposedStart = currentStartTime;
+            let proposedEnd = currentEndTime;
+            let timeShift = 0;
+            
+            // Check for overlaps and adjust if needed
+            const maxAttempts = 10;
+            let attempts = 0;
+            
+            while (attempts < maxAttempts) {
+                const hasOverlap = ourEvents.some(event => {
+                    const eventStart = Date.parse(event.timestamp);
+                    const eventEnd = eventStart + (event.duration * 1000);
+                    
+                    // Check if our proposed time overlaps with this event
+                    return !(proposedEnd <= eventStart || proposedStart >= eventEnd);
+                });
+
+                if (!hasOverlap) {
+                    // Found a good window
+                    break;
+                }
+
+                // Try shifting backward first (earlier start time)
+                if (attempts < 5) {
+                    const shiftMinutes = (attempts + 1) * 15; // 15, 30, 45, 60, 75 minutes
+                    const shiftMs = shiftMinutes * 60 * 1000;
+                    proposedStart = currentStartTime - shiftMs;
+                    proposedEnd = proposedStart + (durationSeconds * 1000);
+                    timeShift = -shiftMinutes;
+                } else {
+                    // Try shifting forward (later start time)
+                    const shiftMinutes = (attempts - 4) * 15; // 15, 30, 45, 60, 75 minutes
+                    const shiftMs = shiftMinutes * 60 * 1000;
+                    proposedStart = currentEndTime + shiftMs;
+                    proposedEnd = proposedStart + (durationSeconds * 1000);
+                    timeShift = shiftMinutes;
+                }
+                
+                attempts++;
+            }
+
+            if (timeShift !== 0) {
+                console.log(`[ActivityWatch] Time adjusted by ${timeShift} minutes to avoid overlap`);
+            }
+
+            return {
+                startTime: new Date(proposedStart).toISOString(),
+                timeShift: timeShift
+            };
+
+        } catch (error) {
+            console.warn('[ActivityWatch] Could not check for overlaps, using current time:', error.message);
+            return {
+                startTime: new Date(currentStartTime).toISOString(),
+                timeShift: 0
+            };
+        }
+    }
+
+    /**
+     * Get recent events from our bucket
+     */
+    async getRecentEvents(hours = 24) {
+        try {
+            const response = await axios.get(
+                `${this.baseUrl}/buckets/${this.bucketId}/events?limit=100`,
+                { timeout: 5000 }
+            );
+            
+            const cutoffTime = Date.now() - (hours * 60 * 60 * 1000);
+            
+            return response.data.filter(event => 
+                Date.parse(event.timestamp) > cutoffTime
+            );
+        } catch (error) {
+            console.warn('[ActivityWatch] Error fetching recent events:', error.message);
+            return [];
         }
     }
 
@@ -185,6 +301,45 @@ class ActivityWatchIntegration {
     setEnabled(enabled) {
         this.enabled = enabled;
         console.log(`[ActivityWatch] Integration ${enabled ? 'enabled' : 'disabled'}`);
+    }
+
+    /**
+     * Set time multiplier for session duration
+     */
+    setTimeMultiplier(multiplier) {
+        if (multiplier <= 0) {
+            console.warn('[ActivityWatch] Time multiplier must be positive, using 1.0');
+            this.timeMultiplier = 1.0;
+        } else {
+            this.timeMultiplier = multiplier;
+            console.log(`[ActivityWatch] Time multiplier set to ${multiplier}x`);
+        }
+    }
+
+    /**
+     * Get current settings
+     */
+    getSettings() {
+        return {
+            enabled: this.enabled,
+            timeMultiplier: this.timeMultiplier,
+            bucketId: this.bucketId,
+            baseUrl: this.baseUrl
+        };
+    }
+
+    /**
+     * Update multiple settings at once
+     */
+    updateSettings(settings) {
+        if (settings.enabled !== undefined) {
+            this.setEnabled(settings.enabled);
+        }
+        if (settings.timeMultiplier !== undefined) {
+            this.setTimeMultiplier(settings.timeMultiplier);
+        }
+        
+        console.log('[ActivityWatch] Settings updated:', this.getSettings());
     }
 }
 

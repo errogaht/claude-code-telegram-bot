@@ -27,7 +27,8 @@ class SessionManager {
     
     // ActivityWatch integration for time tracking
     this.activityWatch = new ActivityWatchIntegration({
-      enabled: options.activityWatchEnabled !== false // Enable by default
+      enabled: options.activityWatchEnabled !== false, // Enable by default
+      timeMultiplier: options.activityWatchTimeMultiplier || 1.0 // Default 1.0x
     });
     
     // Initialize ActivityWatch bucket asynchronously (don't block constructor)
@@ -270,12 +271,16 @@ class SessionManager {
         // Get last user message for context (optional)
         const lastMessage = session.lastUserMessage || 'No message';
         
+        // Get current project name
+        const path = require('path');
+        const projectName = path.basename(this.options.workingDirectory);
+        
         await this.activityWatch.recordSession({
           sessionId: session.sessionId,
           userId: userId,
           duration: session.sessionDuration, // in milliseconds
           message: lastMessage,
-          success: data.success,
+          projectName: projectName,
           tokens: data.usage ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0) : null,
           cost: data.cost || null,
           model: this.getUserModel(userId) || this.options.model
@@ -2490,6 +2495,52 @@ class SessionManager {
       console.error(`[SessionManager] Error calculating tool results size for ${sessionId}:`, error.message);
       return 0; // Return 0 if calculation fails
     }
+  }
+
+  /**
+   * ActivityWatch management methods
+   */
+
+  /**
+   * Get ActivityWatch settings
+   */
+  getActivityWatchSettings() {
+    return this.activityWatch.getSettings();
+  }
+
+  /**
+   * Update ActivityWatch settings
+   */
+  updateActivityWatchSettings(settings) {
+    this.activityWatch.updateSettings(settings);
+  }
+
+  /**
+   * Enable/disable ActivityWatch integration
+   */
+  setActivityWatchEnabled(enabled) {
+    this.activityWatch.setEnabled(enabled);
+  }
+
+  /**
+   * Set ActivityWatch time multiplier
+   */
+  setActivityWatchTimeMultiplier(multiplier) {
+    this.activityWatch.setTimeMultiplier(multiplier);
+  }
+
+  /**
+   * Get ActivityWatch session stats
+   */
+  async getActivityWatchStats() {
+    return await this.activityWatch.getSessionStats();
+  }
+
+  /**
+   * Test ActivityWatch connection
+   */
+  async testActivityWatchConnection() {
+    return await this.activityWatch.testConnection();
   }
 
 }
