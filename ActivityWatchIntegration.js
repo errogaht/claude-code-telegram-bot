@@ -62,7 +62,8 @@ class ActivityWatchIntegration {
                 projectName = 'Unknown Project',
                 tokens = null,
                 cost = null,
-                model = null
+                model = null,
+                botInstance = 'unknown'
             } = sessionData;
 
             // Apply time multiplier and convert to seconds
@@ -70,7 +71,10 @@ class ActivityWatchIntegration {
             const adjustedDurationSeconds = originalDurationSeconds * this.timeMultiplier;
 
             // Find optimal time window to avoid overlaps
-            const timeWindow = await this.findOptimalTimeWindow(adjustedDurationSeconds);
+            const timeWindow = await this.findOptimalTimeWindow(adjustedDurationSeconds, {
+                botInstance: botInstance,
+                projectName: projectName
+            });
 
             const event = {
                 timestamp: timeWindow.startTime,
@@ -87,24 +91,55 @@ class ActivityWatchIntegration {
                     category: 'AI Assistant',
                     original_duration: originalDurationSeconds,
                     time_multiplier: this.timeMultiplier,
-                    time_shift: timeWindow.timeShift
+                    time_shift: timeWindow.timeShift,
+                    bot_instance: botInstance
                 }
             };
 
-            const response = await axios.post(
-                `${this.baseUrl}/buckets/${this.bucketId}/events`,
-                [event],
-                {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 5000
+            // Retry mechanism for network issues
+            let response;
+            const maxRetries = 3;
+            let lastError;
+            
+            for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    response = await axios.post(
+                        `${this.baseUrl}/buckets/${this.bucketId}/events`,
+                        [event],
+                        {
+                            headers: { 'Content-Type': 'application/json' },
+                            timeout: 5000
+                        }
+                    );
+                    break; // Success, exit retry loop
+                } catch (attemptError) {
+                    lastError = attemptError;
+                    
+                    // Check if it's a retryable error
+                    const isRetryable = (
+                        attemptError.code === 'ECONNRESET' ||
+                        attemptError.code === 'ENOTFOUND' ||
+                        attemptError.code === 'ETIMEDOUT' ||
+                        attemptError.message.includes('socket hang up') ||
+                        attemptError.message.includes('timeout')
+                    );
+                    
+                    if (isRetryable && attempt < maxRetries) {
+                        console.warn(`[ActivityWatch] Recording attempt ${attempt} failed (${attemptError.message}), retrying...`);
+                        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                        continue;
+                    } else {
+                        // Not retryable or max retries exceeded
+                        throw attemptError;
+                    }
                 }
-            );
+            }
 
             const eventId = response.data[0]?.id;
             const actualStart = new Date(timeWindow.startTime).toLocaleTimeString();
             const actualEnd = new Date(Date.parse(timeWindow.startTime) + adjustedDurationSeconds * 1000).toLocaleTimeString();
             
-            console.log(`[ActivityWatch] Session recorded: ${projectName} | ${sessionId?.slice(-8)} | ${originalDurationSeconds.toFixed(1)}s → ${adjustedDurationSeconds.toFixed(1)}s (${this.timeMultiplier}x) | ${actualStart}-${actualEnd} | Event ID: ${eventId}`);
+            console.log(`[ActivityWatch] Session recorded: ${botInstance} | ${projectName} | ${sessionId?.slice(-8)} | ${originalDurationSeconds.toFixed(1)}s → ${adjustedDurationSeconds.toFixed(1)}s (${this.timeMultiplier}x) | ${actualStart}-${actualEnd} | Event ID: ${eventId}`);
             
             return eventId;
         } catch (error) {
@@ -121,8 +156,9 @@ class ActivityWatchIntegration {
 
     /**
      * Find optimal time window to avoid overlaps with existing Claude bot sessions
+     * Enhanced with cross-bot conflict resolution for same project
      */
-    async findOptimalTimeWindow(durationSeconds) {
+    async findOptimalTimeWindow(durationSeconds, context = {}) {
         const now = new Date();
         const currentEndTime = now.getTime();
         const currentStartTime = currentEndTime - (durationSeconds * 1000);
@@ -154,40 +190,69 @@ class ActivityWatchIntegration {
             let attempts = 0;
             
             while (attempts < maxAttempts) {
-                const hasOverlap = ourEvents.some(event => {
+                // Enhanced overlap detection with project and bot instance awareness
+                const conflictingEvent = ourEvents.find(event => {
                     const eventStart = Date.parse(event.timestamp);
                     const eventEnd = eventStart + (event.duration * 1000);
                     
-                    // Check if our proposed time overlaps with this event
-                    return !(proposedEnd <= eventStart || proposedStart >= eventEnd);
+                    // Check if times overlap
+                    const timeOverlap = !(proposedEnd <= eventStart || proposedStart >= eventEnd);
+                    
+                    if (!timeOverlap) return false; // No time overlap, no conflict
+                    
+                    // If times overlap, check if it's the same project
+                    const sameProject = event.data.project === context.projectName;
+                    
+                    if (sameProject) {
+                        // Same project - always resolve conflicts by shifting time
+                        return true;
+                    } else {
+                        // Different projects - allow overlap (parallel work on different projects)
+                        return false;
+                    }
                 });
 
-                if (!hasOverlap) {
+                if (!conflictingEvent) {
                     // Found a good window
                     break;
                 }
 
-                // Try shifting backward first (earlier start time)
-                if (attempts < 5) {
-                    const shiftMinutes = (attempts + 1) * 15; // 15, 30, 45, 60, 75 minutes
-                    const shiftMs = shiftMinutes * 60 * 1000;
-                    proposedStart = currentStartTime - shiftMs;
+                // Smart time shifting strategy for same project conflicts
+                if (conflictingEvent.data.project === context.projectName) {
+                    // For same project, try to place session right after the conflicting event
+                    const conflictingEventEnd = Date.parse(conflictingEvent.timestamp) + (conflictingEvent.duration * 1000);
+                    
+                    // Add small buffer (30 seconds) between sessions
+                    const bufferMs = 30 * 1000;
+                    proposedStart = conflictingEventEnd + bufferMs;
                     proposedEnd = proposedStart + (durationSeconds * 1000);
-                    timeShift = -shiftMinutes;
+                    
+                    timeShift = Math.round((proposedStart - currentStartTime) / (60 * 1000)); // in minutes
                 } else {
-                    // Try shifting forward (later start time)
-                    const shiftMinutes = (attempts - 4) * 15; // 15, 30, 45, 60, 75 minutes
-                    const shiftMs = shiftMinutes * 60 * 1000;
-                    proposedStart = currentEndTime + shiftMs;
-                    proposedEnd = proposedStart + (durationSeconds * 1000);
-                    timeShift = shiftMinutes;
+                    // For different projects (shouldn't happen with new logic, but fallback)
+                    // Try shifting backward first (earlier start time)
+                    if (attempts < 5) {
+                        const shiftMinutes = (attempts + 1) * 15; // 15, 30, 45, 60, 75 minutes
+                        const shiftMs = shiftMinutes * 60 * 1000;
+                        proposedStart = currentStartTime - shiftMs;
+                        proposedEnd = proposedStart + (durationSeconds * 1000);
+                        timeShift = -shiftMinutes;
+                    } else {
+                        // Try shifting forward (later start time)
+                        const shiftMinutes = (attempts - 4) * 15; // 15, 30, 45, 60, 75 minutes
+                        const shiftMs = shiftMinutes * 60 * 1000;
+                        proposedStart = currentEndTime + shiftMs;
+                        proposedEnd = proposedStart + (durationSeconds * 1000);
+                        timeShift = shiftMinutes;
+                    }
                 }
                 
                 attempts++;
             }
 
             if (timeShift !== 0) {
-                console.log(`[ActivityWatch] Time adjusted by ${timeShift} minutes to avoid overlap`);
+                const direction = timeShift > 0 ? 'forward' : 'backward';
+                console.log(`[ActivityWatch] Time adjusted ${Math.abs(timeShift)} minutes ${direction} for ${context.botInstance || 'unknown'} (${context.projectName}) to avoid same-project overlap`);
             }
 
             return {

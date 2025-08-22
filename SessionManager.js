@@ -263,10 +263,7 @@ class SessionManager {
         sessionDuration: session.sessionDuration
       };
 
-      const formatted = this.formatter.formatExecutionResult(dataWithDuration, session.sessionId);
-      await this.mainBot.safeSendMessage(chatId, formatted);
-      
-      // Record session in ActivityWatch for time tracking
+      // Record session in ActivityWatch for time tracking BEFORE sending response
       if (session.sessionDuration && session.sessionId) {
         // Get last user message for context (optional)
         const lastMessage = session.lastUserMessage || 'No message';
@@ -275,17 +272,25 @@ class SessionManager {
         const path = require('path');
         const projectName = path.basename(this.options.workingDirectory);
         
-        await this.activityWatch.recordSession({
-          sessionId: session.sessionId,
-          userId: userId,
-          duration: session.sessionDuration, // in milliseconds
-          message: lastMessage,
-          projectName: projectName,
-          tokens: data.usage ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0) : null,
-          cost: data.cost || null,
-          model: this.getUserModel(userId) || this.options.model
-        });
+        try {
+          await this.activityWatch.recordSession({
+            sessionId: session.sessionId,
+            userId: userId,
+            duration: session.sessionDuration, // in milliseconds
+            message: lastMessage,
+            projectName: projectName,
+            tokens: data.usage ? (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0) : null,
+            cost: data.cost || null,
+            model: this.getUserModel(userId) || this.options.model,
+            botInstance: this.options.botInstanceName || 'unknown'
+          });
+        } catch (error) {
+          console.error(`[User ${userId}] ActivityWatch recording failed:`, error.message);
+        }
       }
+
+      const formatted = this.formatter.formatExecutionResult(dataWithDuration, session.sessionId);
+      await this.mainBot.safeSendMessage(chatId, formatted);
       
       // Check for title changes after Claude completes processing
       const sessionId = session.sessionId || session.processor.getCurrentSessionId();
@@ -655,6 +660,36 @@ class SessionManager {
     const session = this.getUserSession(userId);
 
     if (session && session.processor) {
+      // Record cancelled session in ActivityWatch before stopping
+      if (session.sessionStartTime && session.sessionId) {
+        // Calculate session duration up to cancellation
+        const sessionDuration = Date.now() - session.sessionStartTime;
+        
+        // Get last user message for context
+        const lastMessage = session.lastUserMessage || 'Session cancelled by user';
+        
+        // Get current project name
+        const path = require('path');
+        const projectName = path.basename(this.options.workingDirectory);
+        
+        try {
+          await this.activityWatch.recordSession({
+            sessionId: session.sessionId,
+            userId: userId,
+            duration: sessionDuration, // in milliseconds
+            message: lastMessage + ' [CANCELLED]',
+            projectName: projectName,
+            tokens: null, // No token count available for cancelled sessions
+            cost: null,
+            model: this.getUserModel(userId) || this.options.model,
+            botInstance: this.options.botInstanceName || 'unknown'
+          });
+          console.log(`[User ${userId}] Cancelled session recorded in ActivityWatch: ${(sessionDuration/1000).toFixed(1)}s`);
+        } catch (error) {
+          console.error(`[User ${userId}] Failed to record cancelled session in ActivityWatch:`, error.message);
+        }
+      }
+      
       session.processor.cancel();
       await this.mainBot.safeSendMessage(chatId, '❌ **Session cancelled**');
     } else {
@@ -1035,7 +1070,15 @@ class SessionManager {
             preview = preview.substring(0, 80) + '...';
           }
           
-          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}\n`;
+          // Show message count - if cumulative count differs from message count, show both
+          let messageCountText = '';
+          if (session.cumulativeMessageCount && session.cumulativeMessageCount > session.messageCount) {
+            messageCountText = ` • ${session.cumulativeMessageCount} msgs (${session.messageCount} direct)`;
+          } else {
+            messageCountText = ` • ${session.messageCount} msgs`;
+          }
+          
+          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}${messageCountText}\n`;
           text += `   💬 _${preview}_\n\n`;
         });
         
@@ -1135,13 +1178,21 @@ class SessionManager {
           const stats = await fs.stat(filePath);
           const sessionId = file.replace('.jsonl', '');
           
-          // Read first line to get session info
+          // Read first line to get session info and count messages
           const content = await fs.readFile(filePath, 'utf8');
-          const firstLine = content.split('\n')[0];
+          const lines = content.split('\n').filter(line => line.trim());
+          const messageCount = lines.length;
+          const firstLine = lines[0];
           
           if (firstLine.trim()) {
             const sessionData = JSON.parse(firstLine);
             let preview = '';
+            let parentSessionId = null;
+            
+            // Check if this session continues from another
+            if (sessionData.parentUuid) {
+              parentSessionId = sessionData.parentUuid;
+            }
             
             // Extract preview based on session type
             if (sessionData.type === 'summary') {
@@ -1165,7 +1216,9 @@ class SessionManager {
               sessionId: sessionId,
               timestamp: sessionData.timestamp || stats.mtime.toISOString(),
               preview: preview,
-              modifiedTime: stats.mtime
+              modifiedTime: stats.mtime,
+              messageCount: messageCount,
+              parentSessionId: parentSessionId
             });
           }
         } catch (fileError) {
@@ -1173,6 +1226,34 @@ class SessionManager {
           // Continue with other files
         }
       }
+
+      // Calculate cumulative message counts for session chains
+      const sessionMap = new Map(sessions.map(session => [session.sessionId, session]));
+      
+      // Function to calculate cumulative message count for a session
+      const calculateCumulativeCount = (session, visited = new Set()) => {
+        if (visited.has(session.sessionId)) {
+          // Avoid infinite loops in circular references
+          return session.messageCount;
+        }
+        visited.add(session.sessionId);
+        
+        let totalCount = session.messageCount;
+        
+        // Look for sessions that continue this one (based on parentSessionId)
+        for (const otherSession of sessions) {
+          if (otherSession.parentSessionId === session.sessionId) {
+            totalCount += calculateCumulativeCount(otherSession, visited);
+          }
+        }
+        
+        return totalCount;
+      };
+      
+      // Add cumulative message counts
+      sessions.forEach(session => {
+        session.cumulativeMessageCount = calculateCumulativeCount(session);
+      });
 
       // Sort by access time if available, otherwise by modification time (newest first)
       if (userId) {
@@ -1737,7 +1818,15 @@ class SessionManager {
             preview = preview.substring(0, 80) + '...';
           }
           
-          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}\n`;
+          // Show message count - if cumulative count differs from message count, show both
+          let messageCountText = '';
+          if (session.cumulativeMessageCount && session.cumulativeMessageCount > session.messageCount) {
+            messageCountText = ` • ${session.cumulativeMessageCount} msgs (${session.messageCount} direct)`;
+          } else {
+            messageCountText = ` • ${session.messageCount} msgs`;
+          }
+          
+          text += `${startIndex + index + 1}) \`${shortId}\` • ${timeAgo}${messageCountText}\n`;
           text += `   💬 _${preview}_\n\n`;
         });
         
@@ -2310,13 +2399,14 @@ class SessionManager {
         testProcess.on('close', (code) => {
           // Session is valid if:
           // 1. Exit code is 0 AND we got a response, OR
-          // 2. Exit code is non-zero but we got actual content (sometimes Claude returns 1 but works)
-          const isValid = (code === 0 && hasResponse) || (hasResponse && !stderr.includes('Prompt is too long'));
+          // 2. Exit code is non-zero but we got actual content (sometimes Claude returns 1 but works), OR
+          // 3. Exit code is 0 even without response (compact worked, just no output)
+          const isValid = (code === 0) || (hasResponse && !stderr.includes('Prompt is too long'));
           
           if (isValid) {
-            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation successful`);
+            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation successful - code: ${code}, hasResponse: ${hasResponse}`);
           } else {
-            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation failed - code: ${code}, hasResponse: ${hasResponse}, stderr: ${stderr.slice(0, 100)}`);
+            console.log(`[SessionManager] Session ${sessionId.slice(-8)} validation failed - code: ${code}, hasResponse: ${hasResponse}, stderr: ${stderr.slice(0, 200)}, stdout: ${stdout.slice(0, 200)}`);
           }
           
           resolve(isValid);
