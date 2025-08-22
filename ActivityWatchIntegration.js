@@ -37,6 +37,9 @@ class ActivityWatchIntegration {
             if (error.response?.status === 409) {
                 // Bucket already exists - that's fine
                 console.log(`[ActivityWatch] Bucket '${this.bucketId}' already exists`);
+            } else if (error.response?.status === 304) {
+                // Not modified (bucket exists and unchanged) - that's fine too
+                console.log(`[ActivityWatch] Bucket '${this.bucketId}' already exists (304)`);
             } else {
                 console.error('[ActivityWatch] Error initializing bucket:', error.message);
                 this.enabled = false; // Disable on error

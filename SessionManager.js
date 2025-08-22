@@ -26,10 +26,9 @@ class SessionManager {
     this.sessionTitles = new Map(); // userId -> { lastTitle, chatId }
     
     // ActivityWatch integration for time tracking
-    const awSettings = this.loadActivityWatchSettings();
     this.activityWatch = new ActivityWatchIntegration({
-      enabled: awSettings.enabled !== false, // Enable by default
-      timeMultiplier: awSettings.timeMultiplier || 1.0 // Default 1.0x
+      enabled: this.mainBot.configManager.getActivityWatchEnabled(),
+      timeMultiplier: this.mainBot.configManager.getActivityWatchTimeMultiplier()
     });
     
     // Initialize ActivityWatch bucket asynchronously (don't block constructor)
@@ -2502,60 +2501,6 @@ class SessionManager {
    * ActivityWatch management methods
    */
 
-  /**
-   * Load ActivityWatch settings from config file
-   */
-  loadActivityWatchSettings() {
-    if (!this.configFilePath) {
-      return { enabled: true, timeMultiplier: 1.0 }; // Defaults
-    }
-
-    try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      return {
-        enabled: config.activityWatchEnabled !== false, // Default to true
-        timeMultiplier: config.activityWatchTimeMultiplier || 1.0 // Default to 1.0
-      };
-    } catch (error) {
-      console.warn('[SessionManager] Error loading ActivityWatch settings, using defaults:', error.message);
-      return { enabled: true, timeMultiplier: 1.0 };
-    }
-  }
-
-  /**
-   * Save ActivityWatch settings to config file
-   */
-  saveActivityWatchSettings(settings) {
-    if (!this.configFilePath) {
-      console.warn('[SessionManager] No config file path, cannot save ActivityWatch settings');
-      return;
-    }
-
-    try {
-      const fs = require('fs');
-      const configData = fs.readFileSync(this.configFilePath, 'utf8');
-      const config = JSON.parse(configData);
-      
-      // Update ActivityWatch settings
-      if (settings.enabled !== undefined) {
-        config.activityWatchEnabled = settings.enabled;
-      }
-      if (settings.timeMultiplier !== undefined) {
-        config.activityWatchTimeMultiplier = settings.timeMultiplier;
-      }
-      
-      // Write back to file
-      fs.writeFileSync(this.configFilePath, JSON.stringify(config, null, 2));
-      
-      console.log(`[SessionManager] ActivityWatch settings saved:`, settings);
-    } catch (error) {
-      console.error('[SessionManager] Error saving ActivityWatch settings:', error.message);
-      throw new Error(`Failed to save ActivityWatch settings: ${error.message}`);
-    }
-  }
 
   /**
    * Get ActivityWatch settings
@@ -2571,8 +2516,13 @@ class SessionManager {
     // Update in memory
     this.activityWatch.updateSettings(settings);
     
-    // Save to config file
-    this.saveActivityWatchSettings(settings);
+    // Save to config using ConfigManager
+    if (settings.enabled !== undefined) {
+      this.mainBot.configManager.setActivityWatchEnabled(settings.enabled);
+    }
+    if (settings.timeMultiplier !== undefined) {
+      this.mainBot.configManager.setActivityWatchTimeMultiplier(settings.timeMultiplier);
+    }
   }
 
   /**
@@ -2582,8 +2532,8 @@ class SessionManager {
     // Update in memory
     this.activityWatch.setEnabled(enabled);
     
-    // Save to config file
-    this.saveActivityWatchSettings({ enabled });
+    // Save to config using ConfigManager
+    this.mainBot.configManager.setActivityWatchEnabled(enabled);
   }
 
   /**
@@ -2593,8 +2543,8 @@ class SessionManager {
     // Update in memory
     this.activityWatch.setTimeMultiplier(multiplier);
     
-    // Save to config file
-    this.saveActivityWatchSettings({ timeMultiplier: multiplier });
+    // Save to config using ConfigManager
+    this.mainBot.configManager.setActivityWatchTimeMultiplier(multiplier);
   }
 
   /**

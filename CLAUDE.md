@@ -101,6 +101,39 @@ npm test -- --coverage                            # With coverage
 
 **Test structure:** `tests/unit/`, `tests/integration/`, `tests/real-bot/`, `tests/helpers/`, `tests/fixtures/`
 
+### 🌐 Unified Web Server (Vue.js Implementation)
+
+**Primary Implementation**: Vue.js-based web interface for development tools
+**Main File**: `UnifiedWebServer.js` - Single server for all web app pages
+
+**Key Features:**
+- **File Browser**: Browse and view project files with syntax highlighting
+- **Git Diff Viewer**: View git changes, diffs, and status with syntax highlighting
+- **QTunnel Info**: WebSocket-based tunnel status and connection information
+- **EJS Templates**: Located in `views/v2/` directory with Vue.js integration
+
+**Important Notes:**
+- **Vue.js is now the DEFAULT implementation** - old HTML generators have been removed
+- **No `/v2` prefix needed** - Vue.js templates serve all main routes (`/`, `/files`, `/git`, `/info`)
+- **Template Engine**: Uses EJS for server-side rendering with Vue.js client-side enhancements
+- **Security**: Full token authentication and WebServerSecurity integration
+- **Mobile-First**: Touch-optimized responsive design for Telegram usage
+
+**Template Structure:**
+```
+views/v2/
+├── main-menu.ejs              # Main development tools menu
+├── file-browser-simple.ejs    # File listing and navigation
+├── file-viewer-simple.ejs     # File content with syntax highlighting
+├── git-diff-simple.ejs        # Git changed files listing
+├── diff-viewer-simple.ejs     # Individual file diff viewer
+├── git-status-simple.ejs      # Full git status output
+├── info-simple.ejs            # QTunnel status dashboard
+└── error.ejs                  # Error page template
+```
+
+**Auto-Start**: Web server starts automatically with bot instances and creates QTunnel for external access
+
 ### 📱 Telegram Message Formatting
 **Complete formatting documentation**: See `telegram-formatting.md` for comprehensive guide covering all Telegram Bot API formatting options (HTML, MarkdownV2, Markdown Legacy)
 

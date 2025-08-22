@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>🚀 Development Tools - Vue Version</title>
+    <title>🚀 Development Tools</title>
     
     <!-- External CSS Files -->
     <link rel="stylesheet" href="/static/css/main.css">
@@ -15,72 +15,126 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 Development Tools <span class="vue-badge">Vue.js v2</span></h1>
+            <h1>🚀 Development Tools</h1>
             <p>Bot Instance: <strong><%= botInstance %></strong></p>
-            
-            <div class="version-selector">
-                <h3>🧪 Version Selector</h3>
-                <div class="version-buttons">
-                    <a href="/" class="version-btn current">📄 Current Version</a>
-                    <a href="/v2" class="version-btn vue">🚀 Vue Version</a>
-                </div>
-            </div>
-        </div>
-        
-        <div class="debug-info">
-            <strong>🔧 Debug Info:</strong><br>
-            Vue.js Version: v2 | Status: Active | Routes: All configured
         </div>
         
         <div class="menu-grid">
-            <a href="/v2/files" class="menu-item">
+            <a href="/files" class="menu-item">
                 <span class="menu-icon">📁</span>
                 <div class="menu-title">File Browser</div>
-                <div class="menu-desc">Browse and view project files with Vue.js reactivity</div>
+                <div class="menu-desc">Browse and view project files with syntax highlighting</div>
             </a>
             
-            <a href="/v2/git" class="menu-item git">
+            <a href="/git" class="menu-item git">
                 <span class="menu-icon">🔍</span>
                 <div class="menu-title">Git Diff Viewer</div>
-                <div class="menu-desc">View git changes with Vue.js enhanced interface</div>
+                <div class="menu-desc">View git changes, diffs, and status with syntax highlighting</div>
             </a>
             
-            <a href="/v2/info" class="menu-item info">
+            <a href="/info" class="menu-item info">
                 <span class="menu-icon">ℹ️</span>
                 <div class="menu-title">QTunnel Info</div>
-                <div class="menu-desc">Vue.js powered tunnel status dashboard</div>
+                <div class="menu-desc">WebSocket-based tunnel status and connection information</div>
             </a>
         </div>
     </div>
     
-    <!-- Simple JavaScript without Vue for now -->
     <script>
-        console.log('Vue.js main menu loaded successfully');
-        
-        // Simple token management
-        function getTokenFromUrl() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('token');
-        }
-        
-        function addTokenToLinks() {
-            const token = getTokenFromUrl();
-            if (token) {
-                const links = document.querySelectorAll('a[href^="/v2"]');
-                links.forEach(link => {
-                    const url = new URL(link.href, window.location.origin);
-                    if (!url.searchParams.has('token')) {
-                        url.searchParams.set('token', token);
-                        link.href = url.toString();
+        // Comprehensive Token Management System
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7; // Token cookie expires in 7 days
+                this.init();
+            }
+
+            init() {
+                // Check if there's a token in the URL
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    // Save token to cookie
+                    this.saveTokenToCookie(urlToken);
+                    // Clean the URL by removing the token parameter
+                    this.cleanUrl();
+                }
+                
+                // Enhance all links to include token from cookie
+                this.enhanceLinks();
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+                console.log('Token saved to cookie');
+            }
+
+            getTokenFromCookie() {
+                const name = this.COOKIE_NAME + '=';
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) === 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+
+            cleanUrl() {
+                // Remove token from URL without reloading the page
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+
+            // Add token to URLs for navigation
+            addTokenToUrl(url) {
+                const token = this.getTokenFromCookie();
+                if (!token) return url;
+
+                const urlObj = new URL(url, window.location.origin);
+                // Only add token if it's not already present
+                if (!urlObj.searchParams.has('token')) {
+                    urlObj.searchParams.set('token', token);
+                }
+                return urlObj.toString();
+            }
+
+            // Enhanced link clicking with automatic token injection
+            enhanceLinks() {
+                document.addEventListener('click', (e) => {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        // Only enhance internal links (same origin)
+                        try {
+                            const linkUrl = new URL(link.href);
+                            if (linkUrl.origin === window.location.origin && !linkUrl.searchParams.has('token')) {
+                                e.preventDefault();
+                                window.location.href = this.addTokenToUrl(link.href);
+                            }
+                        } catch (e) {
+                            // Invalid URL, let it proceed normally
+                        }
                     }
                 });
             }
         }
-        
-        // Initialize when page loads
+
+        // Initialize token manager when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            addTokenToLinks();
-            console.log('Token management initialized');
+            const tokenManager = new TokenManager();
+            console.log('Development Tools main menu loaded with comprehensive token management');
         });
     </script>
 </body>

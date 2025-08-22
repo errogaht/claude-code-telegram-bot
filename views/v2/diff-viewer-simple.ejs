@@ -3,28 +3,184 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>📄 Diff Viewer - Vue Version</title>
+    <title>📄 Diff Viewer</title>
     
     <!-- External CSS Files -->
     <link rel="stylesheet" href="/static/css/main.css">
     <link rel="stylesheet" href="/static/css/components/vue-badge.css">
     <link rel="stylesheet" href="/static/css/components/debug-info.css">
     <link rel="stylesheet" href="/static/css/components/git-diff.css">
+    
+    <style>
+        .copyable-path {
+            cursor: pointer;
+            color: #007cba;
+            text-decoration: underline;
+            font-family: monospace;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+        
+        .copyable-path:hover {
+            background-color: #f0f8ff;
+        }
+        
+        .copy-tooltip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .copy-tooltip.show {
+            opacity: 1;
+        }
+    </style>
 </head>
 <body>
     <div class="container diff-viewer">
         <div class="header">
-            <a href="/v2/git" class="back-link">← Back to Git Diff</a>
-            <h1>📄 File Diff Viewer <span class="vue-badge">Vue.js</span></h1>
-            <p><strong>File:</strong> <%= filePath %></p>
-        </div>
-        
-        <div class="debug-info">
-            <strong>🔧 Debug Info:</strong><br>
-            File: "<%= filePath %>" | Diff Size: <%= diff.length %> characters
+            <a href="/git" class="back-link">← Back to Git Diff</a>
+            <h1>📄 File Diff Viewer</h1>
+            <p><strong>File:</strong> <span class="copyable-path" onclick="copyToClipboard(this.textContent)"><%= filePath %></span></p>
         </div>
         
         <div class="diff-content"><%- diff %></div>
     </div>
+    
+    <script>
+        // Comprehensive Token Management System
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7; // Token cookie expires in 7 days
+                this.init();
+            }
+
+            init() {
+                // Check if there's a token in the URL
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    // Save token to cookie
+                    this.saveTokenToCookie(urlToken);
+                    // Clean the URL by removing the token parameter
+                    this.cleanUrl();
+                }
+                
+                // Enhance all links to include token from cookie
+                this.enhanceLinks();
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+                console.log('Token saved to cookie');
+            }
+
+            getTokenFromCookie() {
+                const name = this.COOKIE_NAME + '=';
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) === 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+
+            cleanUrl() {
+                // Remove token from URL without reloading the page
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+
+            // Add token to URLs for navigation
+            addTokenToUrl(url) {
+                const token = this.getTokenFromCookie();
+                if (!token) return url;
+
+                const urlObj = new URL(url, window.location.origin);
+                // Only add token if it's not already present
+                if (!urlObj.searchParams.has('token')) {
+                    urlObj.searchParams.set('token', token);
+                }
+                return urlObj.toString();
+            }
+
+            // Enhanced link clicking with automatic token injection
+            enhanceLinks() {
+                document.addEventListener('click', (e) => {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        // Only enhance internal links (same origin)
+                        try {
+                            const linkUrl = new URL(link.href);
+                            if (linkUrl.origin === window.location.origin && !linkUrl.searchParams.has('token')) {
+                                e.preventDefault();
+                                window.location.href = this.addTokenToUrl(link.href);
+                            }
+                        } catch (e) {
+                            // Invalid URL, let it proceed normally
+                        }
+                    }
+                });
+            }
+        }
+
+        // Copy to clipboard functionality
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text.trim()).then(function() {
+                showTooltip('Copied to clipboard!');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+                showTooltip('Copy failed');
+            });
+        }
+
+        function showTooltip(message) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'copy-tooltip';
+            tooltip.textContent = message;
+            document.body.appendChild(tooltip);
+            
+            setTimeout(() => {
+                tooltip.classList.add('show');
+            }, 10);
+            
+            setTimeout(() => {
+                tooltip.classList.remove('show');
+                setTimeout(() => {
+                    document.body.removeChild(tooltip);
+                }, 300);
+            }, 1500);
+        }
+
+        // Initialize token manager when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            const tokenManager = new TokenManager();
+            console.log('Diff viewer page loaded with token management');
+        });
+    </script>
 </body>
 </html>

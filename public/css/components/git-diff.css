@@ -11,9 +11,9 @@
 }
 
 .diff-line { 
-    padding: 2px 8px; 
+    padding: 2px 6px; 
     white-space: pre; 
-    border-left: 3px solid transparent; 
+    border-left: 2px solid transparent; 
     margin: 0;
 }
 
@@ -47,10 +47,10 @@
 
 .line-number {
     display: inline-block; 
-    width: 50px; 
+    width: 40px; 
     color: #959da5; 
     text-align: right;
-    margin-right: 10px; 
+    margin-right: 8px; 
     user-select: none;
 }
 
@@ -119,15 +119,23 @@
     }
     
     .line-number { 
-        width: 40px; 
-        margin-right: 5px; 
+        width: 32px; 
+        margin-right: 6px; 
     }
     
     .diff-list-item {
-        padding: 10px;
+        padding: 8px;
     }
     
     .diff-list-item .file-path {
         font-size: 0.9em;
     }
+}
+/* ===== GIT DIFF SIMPLE TEMPLATE STYLES ===== */
+/* Additional styles for git-diff-simple.ejs template */
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #666;
 }

@@ -358,10 +358,6 @@ class TelegramFormatter {
       text += `⏰ **Session Time:** ${(sessionDuration / 1000).toFixed(1)}s\n`;
     }
     
-    if (duration) {
-      text += `⏱ **Duration:** ${(duration / 1000).toFixed(2)}s\n`;
-    }
-    
     if (cost) {
       text += `💰 **Cost:** $${cost.toFixed(4)}\n`;
     }

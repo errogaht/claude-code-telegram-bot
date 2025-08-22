@@ -3,43 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔍 Git Diff - Vue Version</title>
+    <title>🔍 Git Diff Viewer</title>
+    
+    <!-- External CSS Files -->
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/components/git-diff.css">
     
     <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-            margin: 0; padding: 10px; background: #f5f5f5; 
-            min-height: 100vh;
+        .copyable-path {
+            margin-left: 8px;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+            font-size: 0.9em;
+            color: #007cba;
+            display: inline;
         }
-        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .header { border-bottom: 1px solid #e1e1e1; padding-bottom: 15px; margin-bottom: 20px; }
-        .back-link { display: inline-block; margin-bottom: 15px; color: #666; text-decoration: none; padding: 8px 12px; background: #f8f9fa; border-radius: 4px; }
-        .back-link:hover { color: #007cba; background: #e9ecef; }
-        .vue-badge {
-            display: inline-block; background: linear-gradient(135deg, #4FC08D 0%, #42b883 100%);
-            color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.8em;
-            font-weight: 600; margin-left: 10px;
+        
+        .copyable-path:hover {
+            background-color: #f0f8ff;
         }
-        .debug-info {
-            background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;
-            border-left: 4px solid #4FC08D; font-family: monospace; font-size: 14px;
+        
+        .file-list td:first-child {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .file-list { border-collapse: collapse; width: 100%; }
-        .file-list th, .file-list td { padding: 12px; text-align: left; border-bottom: 1px solid #e1e1e1; }
-        .file-list th { background: #f8f9fa; font-weight: 600; }
-        .empty-state { text-align: center; padding: 40px; color: #666; }
+        
+        .copy-tooltip {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #333;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .copy-tooltip.show {
+            opacity: 1;
+        }
+        
+        .file-list {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed;
+        }
+        
+        .file-list th,
+        .file-list td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e1e1e1;
+            word-wrap: break-word;
+            overflow: visible;
+            vertical-align: middle;
+        }
+        
+        .file-list th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        
+        .file-list th:nth-child(1),
+        .file-list td:nth-child(1) {
+            width: auto;
+            min-width: 200px;
+        }
+        
+        .file-list th:nth-child(2),
+        .file-list td:nth-child(2) {
+            width: 60px;
+            text-align: center;
+        }
+        
+        .file-list th:nth-child(3),
+        .file-list td:nth-child(3) {
+            width: 120px;
+        }
+        
+        .file-list td:nth-child(1) a {
+            display: inline;
+            word-break: break-all;
+        }
+        
+        @media (max-width: 768px) {
+            .file-list th,
+            .file-list td {
+                padding: 10px 8px;
+                font-size: 0.9em;
+            }
+            
+            .file-list th:nth-child(1),
+            .file-list td:nth-child(1) {
+                min-width: 180px;
+                width: auto;
+            }
+            
+            .file-list th:nth-child(2),
+            .file-list td:nth-child(2) {
+                width: 45px;
+                padding: 10px 4px;
+            }
+            
+            .file-list th:nth-child(3),
+            .file-list td:nth-child(3) {
+                width: 90px;
+            }
+            
+            .copyable-path {
+                font-size: 1em;
+                margin-left: 8px;
+                padding: 3px 5px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <a href="/v2" class="back-link">← Vue Home</a>
-            <h1>🔍 Git Diff Viewer <span class="vue-badge">Vue.js</span></h1>
-        </div>
-        
-        <div class="debug-info">
-            <strong>🔧 Debug Info:</strong><br>
-            Changed Files: <%= files.length %> | Status: Working
+            <a href="/" class="back-link">← Home</a>
+            <h1>🔍 Git Diff Viewer</h1>
         </div>
         
         <% if (files.length === 0) { %>
@@ -61,7 +152,8 @@
                         <tr>
                             <td>
                                 <span style="margin-right: 10px;"><%= file.icon %></span>
-                                <a href="/v2/git/diff?file=<%= encodeURIComponent(file.path) %>"><%= file.path %></a>
+                                <a href="/git/diff?file=<%= encodeURIComponent(file.path) %>"><%= file.path %></a>
+                                <span class="copyable-path" onclick="copyToClipboard('<%= file.path %>'); event.stopPropagation();" title="Click to copy path">📋</span>
                             </td>
                             <td><%= file.status %></td>
                             <td><%= file.changeType %></td>
@@ -71,5 +163,131 @@
             </table>
         <% } %>
     </div>
+    
+    <script>
+        // Comprehensive Token Management System
+        class TokenManager {
+            constructor() {
+                this.COOKIE_NAME = 'auth_token';
+                this.COOKIE_EXPIRES_DAYS = 7; // Token cookie expires in 7 days
+                this.init();
+            }
+
+            init() {
+                // Check if there's a token in the URL
+                const urlToken = this.getTokenFromUrl();
+                if (urlToken) {
+                    // Save token to cookie
+                    this.saveTokenToCookie(urlToken);
+                    // Clean the URL by removing the token parameter
+                    this.cleanUrl();
+                }
+                
+                // Enhance all links to include token from cookie
+                this.enhanceLinks();
+            }
+
+            getTokenFromUrl() {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get('token');
+            }
+
+            saveTokenToCookie(token) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (this.COOKIE_EXPIRES_DAYS * 24 * 60 * 60 * 1000));
+                document.cookie = this.COOKIE_NAME + '=' + token + ';expires=' + expires.toUTCString() + ';path=/;SameSite=Lax';
+                console.log('Token saved to cookie');
+            }
+
+            getTokenFromCookie() {
+                const name = this.COOKIE_NAME + '=';
+                const decodedCookie = decodeURIComponent(document.cookie);
+                const ca = decodedCookie.split(';');
+                for (let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') {
+                        c = c.substring(1);
+                    }
+                    if (c.indexOf(name) === 0) {
+                        return c.substring(name.length, c.length);
+                    }
+                }
+                return null;
+            }
+
+            cleanUrl() {
+                // Remove token from URL without reloading the page
+                const url = new URL(window.location);
+                url.searchParams.delete('token');
+                window.history.replaceState({}, document.title, url.toString());
+            }
+
+            // Add token to URLs for navigation
+            addTokenToUrl(url) {
+                const token = this.getTokenFromCookie();
+                if (!token) return url;
+
+                const urlObj = new URL(url, window.location.origin);
+                // Only add token if it's not already present
+                if (!urlObj.searchParams.has('token')) {
+                    urlObj.searchParams.set('token', token);
+                }
+                return urlObj.toString();
+            }
+
+            // Enhanced link clicking with automatic token injection
+            enhanceLinks() {
+                document.addEventListener('click', (e) => {
+                    const link = e.target.closest('a');
+                    if (link && link.href) {
+                        // Only enhance internal links (same origin)
+                        try {
+                            const linkUrl = new URL(link.href);
+                            if (linkUrl.origin === window.location.origin && !linkUrl.searchParams.has('token')) {
+                                e.preventDefault();
+                                window.location.href = this.addTokenToUrl(link.href);
+                            }
+                        } catch (e) {
+                            // Invalid URL, let it proceed normally
+                        }
+                    }
+                });
+            }
+        }
+
+        // Copy to clipboard functionality
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text.trim()).then(function() {
+                showTooltip('Copied to clipboard!');
+            }).catch(function(err) {
+                console.error('Failed to copy: ', err);
+                showTooltip('Copy failed');
+            });
+        }
+
+        function showTooltip(message) {
+            const tooltip = document.createElement('div');
+            tooltip.className = 'copy-tooltip';
+            tooltip.textContent = message;
+            document.body.appendChild(tooltip);
+            
+            setTimeout(() => {
+                tooltip.classList.add('show');
+            }, 10);
+            
+            setTimeout(() => {
+                tooltip.classList.remove('show');
+                setTimeout(() => {
+                    document.body.removeChild(tooltip);
+                }, 300);
+            }, 1500);
+        }
+
+        // Initialize token manager when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            const tokenManager = new TokenManager();
+            console.log('Git diff page loaded with token management');
+        });
+    </script>
 </body>
 </html>

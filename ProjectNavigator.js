@@ -179,6 +179,11 @@ class ProjectNavigator {
       // Update working directory
       this.options.workingDirectory = actualPath;
       
+      // Update UnifiedWebServer project root to match new directory
+      if (this.mainBot && this.mainBot.unifiedWebServer) {
+        this.mainBot.unifiedWebServer.updateProjectRoot(actualPath);
+      }
+      
       // IMPORTANT: Save the new project to config immediately
       // This ensures the bot remembers the selected project after restart
       await this.saveCurrentProjectToConfig(actualPath);
@@ -231,29 +236,38 @@ class ProjectNavigator {
    * Save current project to config file for persistence
    */
   async saveCurrentProjectToConfig(projectPath) {
-    // Save the project as currentProject in config
-    if (this.mainBot && this.mainBot.configFilePath) {
+    // Save the project as currentProject in config using ConfigManager
+    if (this.mainBot && this.mainBot.configManager) {
+      try {
+        // Update the currentProject using ConfigManager (handles disk persistence)
+        this.mainBot.configManager.setCurrentProject(projectPath);
+        
+        // Ensure projectSessions exists - ConfigManager handles this automatically
+        const projectSessions = this.mainBot.configManager.getProjectSessions();
+        
+        // Note: We don't create a session here, just set the current project
+        // Sessions will be created/updated when the user actually starts using the project
+        
+        console.log(`[ProjectNavigator] Saved current project to config: ${projectPath}`);
+      } catch (error) {
+        console.error('[ProjectNavigator] Error saving current project to config:', error.message);
+      }
+    } else if (this.mainBot && this.mainBot.configFilePath) {
+      // Fallback to old method if ConfigManager not available
       try {
         const fs = require('fs');
         const configData = fs.readFileSync(this.mainBot.configFilePath, 'utf8');
         const config = JSON.parse(configData);
         
-        // Update the currentProject in config
         config.currentProject = projectPath;
-        
-        // Initialize projectSessions if it doesn't exist
         if (!config.projectSessions) {
           config.projectSessions = {};
         }
         
-        // Note: We don't create a session here, just set the current project
-        // Sessions will be created/updated when the user actually starts using the project
-        
         fs.writeFileSync(this.mainBot.configFilePath, JSON.stringify(config, null, 2));
-        
-        console.log(`[ProjectNavigator] Saved current project to config: ${projectPath}`);
+        console.log(`[ProjectNavigator] Saved current project to config (fallback): ${projectPath}`);
       } catch (error) {
-        console.error('[ProjectNavigator] Error saving current project to config:', error.message);
+        console.error('[ProjectNavigator] Error saving current project to config (fallback):', error.message);
       }
     }
   }
