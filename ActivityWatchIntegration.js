@@ -139,6 +139,9 @@ class ActivityWatchIntegration {
             const actualStart = new Date(timeWindow.startTime).toLocaleTimeString();
             const actualEnd = new Date(Date.parse(timeWindow.startTime) + adjustedDurationSeconds * 1000).toLocaleTimeString();
             
+            // ALSO record as fake window event for standard ActivityWatch interface
+            await this.recordAsWindowEvent(timeWindow.startTime, adjustedDurationSeconds, projectName, sessionId);
+            
             console.log(`[ActivityWatch] Session recorded: ${botInstance} | ${projectName} | ${sessionId?.slice(-8)} | ${originalDurationSeconds.toFixed(1)}s → ${adjustedDurationSeconds.toFixed(1)}s (${this.timeMultiplier}x) | ${actualStart}-${actualEnd} | Event ID: ${eventId}`);
             
             return eventId;
@@ -151,6 +154,65 @@ class ActivityWatchIntegration {
             }
             
             return null;
+        }
+    }
+
+    /**
+     * Record session as fake window event for standard ActivityWatch interface
+     */
+    async recordAsWindowEvent(timestamp, durationSeconds, projectName, sessionId) {
+        if (!this.enabled) return;
+        
+        try {
+            const windowBucket = `aw-watcher-window_${this.hostname}`;
+            
+            // Create fake window event that looks like a real application
+            const windowEvent = {
+                timestamp: timestamp,
+                duration: durationSeconds,
+                data: {
+                    app: `${projectName.toLowerCase()}-ai-assistant`,
+                    title: `${projectName} AI Assistant - Session ${sessionId?.slice(-8) || 'work'}`
+                }
+            };
+
+            // Try to record to window bucket
+            try {
+                await axios.post(
+                    `${this.baseUrl}/buckets/${windowBucket}/events`,
+                    [windowEvent],
+                    {
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 5000
+                    }
+                );
+                console.log(`[ActivityWatch] Window event recorded: ${windowEvent.data.app} | ${durationSeconds.toFixed(1)}s`);
+            } catch (error) {
+                // If window bucket doesn't exist, try to create it first
+                if (error.response?.status === 404) {
+                    console.log(`[ActivityWatch] Creating window bucket: ${windowBucket}`);
+                    await axios.post(`${this.baseUrl}/buckets/${windowBucket}`, {
+                        type: 'currentwindow',
+                        client: 'aw-watcher-window',
+                        hostname: this.hostname
+                    });
+                    
+                    // Retry recording after creating bucket
+                    await axios.post(
+                        `${this.baseUrl}/buckets/${windowBucket}/events`,
+                        [windowEvent],
+                        {
+                            headers: { 'Content-Type': 'application/json' },
+                            timeout: 5000
+                        }
+                    );
+                    console.log(`[ActivityWatch] Window event recorded after bucket creation: ${windowEvent.data.app}`);
+                } else {
+                    throw error;
+                }
+            }
+        } catch (error) {
+            console.warn(`[ActivityWatch] Could not record window event: ${error.message}`);
         }
     }
 
